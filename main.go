@@ -12,6 +12,7 @@ import (
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("52"))
+	markedStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("90"))
 	normalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))
@@ -67,6 +68,7 @@ type model struct {
 	tasks         []task
 	projectCursor int
 	taskCursor    int
+	selected      map[int]bool
 	status        string
 	input         string
 	mode          inputMode
@@ -178,6 +180,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tasks = msg.tasks
 		m.taskCursor = 0
+		m.selected = nil
 		m.status = fmt.Sprintf("%d tasks", len(msg.tasks))
 
 	case statusMsg:
@@ -197,9 +200,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeConfirmDelete {
 			switch msg.String() {
 			case "y", "Y":
-				t := m.tasks[m.taskCursor]
+				targets := m.selectedTasks()
+				m.selected = nil
 				m.mode = modeNormal
-				return m, deleteTask(t.ID, t.Content)
+				var cmds []tea.Cmd
+				for _, t := range targets {
+					cmds = append(cmds, deleteTask(t.ID, t.Content))
+				}
+				return m, tea.Batch(cmds...)
 			default:
 				m.mode = modeNormal
 			}
@@ -211,6 +219,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleNormal(msg)
 	}
 	return m, nil
+}
+
+func (m model) selectedTasks() []task {
+	if len(m.selected) == 0 {
+		if m.taskCursor < len(m.tasks) {
+			return []task{m.tasks[m.taskCursor]}
+		}
+		return nil
+	}
+	var out []task
+	for i, t := range m.tasks {
+		if m.selected[i] {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func (m model) refreshTasks() tea.Cmd {
@@ -279,10 +303,15 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case modeMoveTask:
 			lower := strings.ToLower(text)
-			t := m.tasks[m.taskCursor]
 			for _, p := range m.projects {
 				if strings.ToLower(p.Name) == lower {
-					return m, moveTask(t.ID, t.Content, p.ID)
+					targets := m.selectedTasks()
+					m.selected = nil
+					var cmds []tea.Cmd
+					for _, t := range targets {
+						cmds = append(cmds, moveTask(t.ID, t.Content, p.ID))
+					}
+					return m, tea.Batch(cmds...)
 				}
 			}
 		case modeAdd:
@@ -345,11 +374,33 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.taskCursor = len(m.tasks) - 1
 		}
 
-	case "x":
+	case "v", " ":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-			t := m.tasks[m.taskCursor]
-			return m, closeTask(t.ID, t.Content)
+			if m.selected == nil {
+				m.selected = make(map[int]bool)
+			}
+			m.selected[m.taskCursor] = !m.selected[m.taskCursor]
+			if !m.selected[m.taskCursor] {
+				delete(m.selected, m.taskCursor)
+			}
+			if m.taskCursor < len(m.tasks)-1 {
+				m.taskCursor++
+			}
 		}
+	case "esc":
+		m.selected = nil
+
+	case "x":
+		if len(m.tasks) == 0 {
+			break
+		}
+		targets := m.selectedTasks()
+		m.selected = nil
+		var cmds []tea.Cmd
+		for _, t := range targets {
+			cmds = append(cmds, closeTask(t.ID, t.Content))
+		}
+		return m, tea.Batch(cmds...)
 	case "d":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeConfirmDelete
@@ -488,11 +539,20 @@ func (m model) View() string {
 		if tag != "" {
 			tag = " " + tag
 		}
-		if i == m.taskCursor {
-			main.WriteString(selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + tag + "\n")
-		} else {
-			main.WriteString(normalStyle.Render("  ○ "+t.Content) + dimStyle.Render(due) + tag + "\n")
+		isCursor := i == m.taskCursor
+		isMarked := m.selected[i]
+		var line string
+		switch {
+		case isCursor && isMarked:
+			line = markedStyle.Render(" ● "+t.Content) + dimStyle.Render(due) + tag
+		case isCursor:
+			line = selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + tag
+		case isMarked:
+			line = markedStyle.Render(" ● "+t.Content) + dimStyle.Render(due) + tag
+		default:
+			line = normalStyle.Render("  ○ "+t.Content) + dimStyle.Render(due) + tag
 		}
+		main.WriteString(line + "\n")
 	}
 
 	if m.mode == modeAdd {
