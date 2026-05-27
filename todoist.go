@@ -114,6 +114,11 @@ func (c *TodoistClient) GetTasksByProject(projectID string) ([]task, error) {
 	return resp.Results, nil
 }
 
+func (c *TodoistClient) DeleteTask(taskID string) error {
+	_, err := c.do("DELETE", "/tasks/"+taskID, nil)
+	return err
+}
+
 func (c *TodoistClient) CloseTask(taskID string) error {
 	_, err := c.do("POST", "/tasks/"+taskID+"/close", nil)
 	return err

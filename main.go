@@ -76,6 +76,15 @@ func fetchProjectTasks(projectID string) tea.Cmd {
 	}
 }
 
+func deleteTask(id, content string) tea.Cmd {
+	return func() tea.Msg {
+		if err := api.DeleteTask(id); err != nil {
+			return errMsg(fmt.Sprintf("Error deleting: %v", err))
+		}
+		return statusMsg(fmt.Sprintf("Deleted: %s", content))
+	}
+}
+
 func closeTask(id, content string) tea.Cmd {
 	return func() tea.Msg {
 		if err := api.CloseTask(id); err != nil {
@@ -205,6 +214,11 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			t := m.tasks[m.taskCursor]
 			return m, closeTask(t.ID, t.Content)
 		}
+	case "d":
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			t := m.tasks[m.taskCursor]
+			return m, deleteTask(t.ID, t.Content)
+		}
 	case "a":
 		m.inputOn = true
 		m.input = ""
@@ -270,7 +284,7 @@ func (m model) View() string {
 		footer.WriteString(statusStyle.Render(m.status))
 	}
 	footer.WriteString("\n")
-	footer.WriteString(helpStyle.Render("j/k:tasks  J/K:projects  x:complete  a:add  r:refresh  g/G:top/bottom  q:quit"))
+	footer.WriteString(helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  r:refresh  g/G:top/bottom  q:quit"))
 
 	return content + "\n" + footer.String()
 }
