@@ -119,11 +119,11 @@ func (c *TodoistClient) CloseTask(taskID string) error {
 	return err
 }
 
-func (c *TodoistClient) CreateTask(content, projectID string) error {
-	body := map[string]string{"content": content}
+func (c *TodoistClient) CreateTask(text, projectID string) error {
+	body := map[string]string{"text": text}
 	if projectID != "" {
 		body["project_id"] = projectID
 	}
-	_, err := c.do("POST", "/tasks", body)
+	_, err := c.do("POST", "/tasks/quick", body)
 	return err
 }
