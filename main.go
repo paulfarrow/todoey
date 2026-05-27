@@ -56,6 +56,7 @@ const (
 	modeNormal inputMode = iota
 	modeAdd
 	modeSearch
+	modeGoto
 )
 
 type model struct {
@@ -192,28 +193,64 @@ func (m model) refreshTasks() tea.Cmd {
 	return fetchTodayTasks()
 }
 
+func (m model) gotoCompletion() string {
+	lower := strings.ToLower(m.input)
+	if lower == "" {
+		return ""
+	}
+	if strings.HasPrefix("today", lower) {
+		return "Today"
+	}
+	for _, p := range m.projects {
+		if strings.HasPrefix(strings.ToLower(p.Name), lower) {
+			return p.Name
+		}
+	}
+	return ""
+}
+
 func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "tab":
+		if m.mode == modeGoto {
+			if c := m.gotoCompletion(); c != "" {
+				m.input = c
+			}
+		}
 	case "enter":
 		text := strings.TrimSpace(m.input)
-		if m.mode == modeSearch {
-			m.mode = modeNormal
-			m.input = ""
+		origMode := m.mode
+		m.mode = modeNormal
+		m.input = ""
+		switch origMode {
+		case modeSearch:
 			if text != "" {
 				m.status = "Searching..."
 				return m, searchTasks(text)
 			}
 			return m, m.refreshTasks()
-		}
-		// modeAdd
-		m.mode = modeNormal
-		m.input = ""
-		if text != "" {
-			var pid string
-			if m.projectCursor > 0 && m.projectCursor-1 < len(m.projects) {
-				pid = m.projects[m.projectCursor-1].ID
+		case modeGoto:
+			lower := strings.ToLower(text)
+			if lower == "today" {
+				m.projectCursor = 0
+				m.status = "Loading..."
+				return m, m.refreshTasks()
 			}
-			return m, createTask(text, pid)
+			for i, p := range m.projects {
+				if strings.ToLower(p.Name) == lower {
+					m.projectCursor = i + 1
+					m.status = "Loading..."
+					return m, m.refreshTasks()
+				}
+			}
+		case modeAdd:
+			if text != "" {
+				var pid string
+				if m.projectCursor > 0 && m.projectCursor-1 < len(m.projects) {
+					pid = m.projects[m.projectCursor-1].ID
+				}
+				return m, createTask(text, pid)
+			}
 		}
 	case "esc":
 		m.mode = modeNormal
@@ -280,6 +317,9 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.mode = modeSearch
 		m.input = ""
+	case "c":
+		m.mode = modeGoto
+		m.input = ""
 	case "r":
 		m.status = "Refreshing..."
 		return m, m.refreshTasks()
@@ -335,6 +375,12 @@ func (m model) View() string {
 		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input + "█\n")
 	} else if m.mode == modeSearch {
 		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input + "█\n")
+	} else if m.mode == modeGoto {
+		ghost := ""
+		if c := m.gotoCompletion(); c != "" && c != m.input {
+			ghost = dimStyle.Render(c[len(m.input):])
+		}
+		main.WriteString("\n" + titleStyle.Render("  Go to project: ") + m.input + ghost + "█\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
@@ -352,7 +398,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  r:refresh  g/G:top/bottom  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  r:refresh  g/G:top/bottom  q:quit"),
 	)
 
 	return content + "\n" + footer
