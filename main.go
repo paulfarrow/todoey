@@ -33,6 +33,23 @@ var (
 
 var api = NewTodoistClient()
 
+// projectColors cycles through distinct foreground colors for project tags.
+var projectColors = []lipgloss.Color{"75", "215", "114", "183", "87", "222", "159", "210"}
+
+func projectTagStyle(idx int) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(projectColors[idx%len(projectColors)])
+}
+
+func (m model) projectTag(projectID string) string {
+	for i, p := range m.projects {
+		if p.ID == projectID {
+			s := projectTagStyle(i)
+			return s.Render("#") + s.Bold(true).Render(p.Name)
+		}
+	}
+	return ""
+}
+
 type inputMode int
 
 const (
@@ -303,10 +320,14 @@ func (m model) View() string {
 	}
 	for i, t := range m.tasks {
 		due := dueStr(t)
+		tag := m.projectTag(t.ProjectID)
+		if tag != "" {
+			tag = " " + tag
+		}
 		if i == m.taskCursor {
-			main.WriteString(selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + "\n")
+			main.WriteString(selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + tag + "\n")
 		} else {
-			main.WriteString(normalStyle.Render("  ○ "+t.Content) + dimStyle.Render(due) + "\n")
+			main.WriteString(normalStyle.Render("  ○ "+t.Content) + dimStyle.Render(due) + tag + "\n")
 		}
 	}
 
