@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Styles
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("170"))
@@ -20,15 +19,8 @@ var (
 	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-)
-
-type view int
-
-const (
-	viewToday view = iota
-	viewInbox
-	viewProjects
-	viewAdd
+	sidebarStyle  = lipgloss.NewStyle().BorderRight(true).BorderStyle(lipgloss.NormalBorder()).Padding(0, 1)
+	paneStyle     = lipgloss.NewStyle().Padding(0, 1)
 )
 
 type task struct {
@@ -55,76 +47,66 @@ type projectResponse struct {
 }
 
 type model struct {
-	tasks    []task
-	projects []project
-	cursor   int
-	view     view
-	status   string
-	input    string
-	inputOn  bool
-	width    int
-	height   int
+	projects      []project
+	tasks         []task
+	projectCursor int
+	taskCursor    int
+	status        string
+	input         string
+	inputOn       bool
+	width         int
+	height        int
 }
 
-type tasksMsg []task
-type projectsMsg []project
+type dataMsg struct {
+	projects []project
+	tasks    []task
+}
 type statusMsg string
 type errMsg string
 
-func fetchTasks(args ...string) tea.Cmd {
+func fetchData(projectID string) tea.Cmd {
 	return func() tea.Msg {
-		cmdArgs := append([]string{"task", "list", "--json"}, args...)
-		out, err := exec.Command("td", cmdArgs...).Output()
+		pOut, err := exec.Command("td", "project", "list", "--json").Output()
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		var resp taskResponse
-		if err := json.Unmarshal(out, &resp); err != nil {
+		var pResp projectResponse
+		if err := json.Unmarshal(pOut, &pResp); err != nil {
 			return errMsg(fmt.Sprintf("Parse error: %v", err))
 		}
-		return tasksMsg(resp.Results)
+
+		// Default to today
+		tOut, err := exec.Command("td", "today", "--json").Output()
+		if err != nil {
+			return errMsg(fmt.Sprintf("Error: %v", err))
+		}
+		var tResp taskResponse
+		if err := json.Unmarshal(tOut, &tResp); err != nil {
+			return errMsg(fmt.Sprintf("Parse error: %v", err))
+		}
+
+		return dataMsg{projects: pResp.Results, tasks: tResp.Results}
 	}
 }
 
-func fetchToday() tea.Cmd {
+func fetchTasksForProject(name string) tea.Cmd {
 	return func() tea.Msg {
-		out, err := exec.Command("td", "today", "--json").Output()
+		var tOut []byte
+		var err error
+		if name == "" {
+			tOut, err = exec.Command("td", "task", "list", "--json").Output()
+		} else {
+			tOut, err = exec.Command("td", "task", "list", "--project", name, "--json").Output()
+		}
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		var resp taskResponse
-		if err := json.Unmarshal(out, &resp); err != nil {
+		var tResp taskResponse
+		if err := json.Unmarshal(tOut, &tResp); err != nil {
 			return errMsg(fmt.Sprintf("Parse error: %v", err))
 		}
-		return tasksMsg(resp.Results)
-	}
-}
-
-func fetchInbox() tea.Cmd {
-	return func() tea.Msg {
-		out, err := exec.Command("td", "inbox", "--json").Output()
-		if err != nil {
-			return errMsg(fmt.Sprintf("Error: %v", err))
-		}
-		var resp taskResponse
-		if err := json.Unmarshal(out, &resp); err != nil {
-			return errMsg(fmt.Sprintf("Parse error: %v", err))
-		}
-		return tasksMsg(resp.Results)
-	}
-}
-
-func fetchProjects() tea.Cmd {
-	return func() tea.Msg {
-		out, err := exec.Command("td", "project", "list", "--json").Output()
-		if err != nil {
-			return errMsg(fmt.Sprintf("Error: %v", err))
-		}
-		var resp projectResponse
-		if err := json.Unmarshal(out, &resp); err != nil {
-			return errMsg(fmt.Sprintf("Parse error: %v", err))
-		}
-		return projectsMsg(resp.Results)
+		return dataMsg{tasks: tResp.Results}
 	}
 }
 
@@ -149,7 +131,7 @@ func addTask(text string) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return fetchToday()
+	return fetchData("")
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -158,22 +140,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case tasksMsg:
-		m.tasks = msg
-		m.projects = nil
-		m.cursor = 0
-		m.status = fmt.Sprintf("%d tasks", len(msg))
-
-	case projectsMsg:
-		m.projects = msg
-		m.tasks = nil
-		m.cursor = 0
-		m.status = fmt.Sprintf("%d projects", len(msg))
+	case dataMsg:
+		if msg.projects != nil {
+			m.projects = msg.projects
+		}
+		m.tasks = msg.tasks
+		m.taskCursor = 0
+		m.status = fmt.Sprintf("%d tasks", len(msg.tasks))
 
 	case statusMsg:
 		m.status = string(msg)
-		// Refresh current view
-		return m, m.refreshCmd()
+		return m, m.refreshTasks()
 
 	case errMsg:
 		m.status = string(msg)
@@ -187,16 +164,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) refreshCmd() tea.Cmd {
-	switch m.view {
-	case viewToday:
-		return fetchToday()
-	case viewInbox:
-		return fetchInbox()
-	case viewProjects:
-		return fetchProjects()
-	default:
-		return fetchToday()
+func (m model) refreshTasks() tea.Cmd {
+	if m.projectCursor == 0 {
+		return fetchTasksToday()
+	}
+	if m.projectCursor-1 < len(m.projects) {
+		return fetchTasksForProject(m.projects[m.projectCursor-1].Name)
+	}
+	return fetchTasksToday()
+}
+
+func fetchTasksToday() tea.Cmd {
+	return func() tea.Msg {
+		tOut, err := exec.Command("td", "today", "--json").Output()
+		if err != nil {
+			return errMsg(fmt.Sprintf("Error: %v", err))
+		}
+		var tResp taskResponse
+		if err := json.Unmarshal(tOut, &tResp); err != nil {
+			return errMsg(fmt.Sprintf("Parse error: %v", err))
+		}
+		return dataMsg{tasks: tResp.Results}
 	}
 }
 
@@ -229,126 +217,115 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 
-	// Vim navigation
+	// j/k: navigate tasks
 	case "j", "down":
-		m.cursor++
-		if m.cursor >= m.listLen() {
-			m.cursor = m.listLen() - 1
+		if m.taskCursor < len(m.tasks)-1 {
+			m.taskCursor++
 		}
 	case "k", "up":
-		m.cursor--
-		if m.cursor < 0 {
-			m.cursor = 0
+		if m.taskCursor > 0 {
+			m.taskCursor--
 		}
+
+	// J/K: navigate projects in sidebar (index 0 = Today, 1+ = projects)
+	case "J":
+		if m.projectCursor < len(m.projects) {
+			m.projectCursor++
+			m.status = "Loading..."
+			return m, m.refreshTasks()
+		}
+	case "K":
+		if m.projectCursor > 0 {
+			m.projectCursor--
+			m.status = "Loading..."
+			return m, m.refreshTasks()
+		}
+
 	case "g":
-		m.cursor = 0
+		m.taskCursor = 0
 	case "G":
-		m.cursor = m.listLen() - 1
+		if len(m.tasks) > 0 {
+			m.taskCursor = len(m.tasks) - 1
+		}
 
-	// Views
-	case "alt+1":
-		m.view = viewToday
-		m.status = "Loading..."
-		return m, fetchToday()
-	case "alt+2":
-		m.view = viewInbox
-		m.status = "Loading..."
-		return m, fetchInbox()
-	case "alt+3":
-		m.view = viewProjects
-		m.status = "Loading..."
-		return m, fetchProjects()
-
-	// Actions
 	case "x":
-		if len(m.tasks) > 0 && m.cursor < len(m.tasks) {
-			return m, completeTask(m.tasks[m.cursor].Content)
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			return m, completeTask(m.tasks[m.taskCursor].Content)
 		}
 	case "a":
 		m.inputOn = true
 		m.input = ""
 	case "r":
 		m.status = "Refreshing..."
-		return m, m.refreshCmd()
+		return m, m.refreshTasks()
 	}
 	return m, nil
 }
 
-func (m model) listLen() int {
-	if m.view == viewProjects {
-		return max(len(m.projects), 1)
-	}
-	return max(len(m.tasks), 1)
-}
-
 func (m model) View() string {
-	var b strings.Builder
+	// Sidebar: project list with Today at top
+	sidebarWidth := 24
+	var sidebar strings.Builder
+	sidebar.WriteString(titleStyle.Render("Projects") + "\n\n")
 
-	// Header
-	tabs := []string{"[1]Today", "[2]Inbox", "[3]Projects"}
-	for i, t := range tabs {
-		if view(i) == m.view {
-			b.WriteString(titleStyle.Render(t))
-		} else {
-			b.WriteString(dimStyle.Render(t))
-		}
-		b.WriteString("  ")
-	}
-	b.WriteString("\n\n")
-
-	// Content
-	if m.view == viewProjects {
-		for i, p := range m.projects {
-			cursor := "  "
-			if i == m.cursor {
-				cursor = "> "
-				b.WriteString(selectedStyle.Render(cursor + p.Name))
-			} else {
-				b.WriteString(normalStyle.Render(cursor + p.Name))
-			}
-			b.WriteString("\n")
-		}
+	// Today entry
+	if m.projectCursor == 0 {
+		sidebar.WriteString(selectedStyle.Render("> Today") + "\n")
 	} else {
-		if len(m.tasks) == 0 {
-			b.WriteString(dimStyle.Render("  No tasks"))
-			b.WriteString("\n")
+		sidebar.WriteString(normalStyle.Render("  Today") + "\n")
+	}
+
+	for i, p := range m.projects {
+		name := p.Name
+		if len(name) > sidebarWidth-4 {
+			name = name[:sidebarWidth-4]
 		}
-		for i, t := range m.tasks {
-			cursor := "  "
-			line := t.Content
-			if t.Due != nil && t.Due.Date != "" {
-				line += dimStyle.Render(" (" + t.Due.Date + ")")
-			}
-			if i == m.cursor {
-				cursor = "> "
-				b.WriteString(selectedStyle.Render(cursor+t.Content) + dimStyle.Render(dueStr(t)))
-			} else {
-				b.WriteString(normalStyle.Render(cursor+t.Content) + dimStyle.Render(dueStr(t)))
-			}
-			b.WriteString("\n")
+		if i+1 == m.projectCursor {
+			sidebar.WriteString(selectedStyle.Render("> "+name) + "\n")
+		} else {
+			sidebar.WriteString(normalStyle.Render("  "+name) + "\n")
+		}
+	}
+
+	// Main pane: tasks for selected project
+	var main strings.Builder
+	if m.projectCursor == 0 {
+		main.WriteString(titleStyle.Render("Today") + "\n\n")
+	} else if m.projectCursor-1 < len(m.projects) {
+		main.WriteString(titleStyle.Render(m.projects[m.projectCursor-1].Name) + "\n\n")
+	}
+	if len(m.tasks) == 0 {
+		main.WriteString(dimStyle.Render("  No tasks") + "\n")
+	}
+	for i, t := range m.tasks {
+		if i == m.taskCursor {
+			main.WriteString(selectedStyle.Render("> "+t.Content) + dimStyle.Render(dueStr(t)) + "\n")
+		} else {
+			main.WriteString(normalStyle.Render("  "+t.Content) + dimStyle.Render(dueStr(t)) + "\n")
 		}
 	}
 
 	// Input
 	if m.inputOn {
-		b.WriteString("\n")
-		b.WriteString(titleStyle.Render("Add task: ") + m.input + "█")
-		b.WriteString("\n")
+		main.WriteString("\n" + titleStyle.Render("Add task: ") + m.input + "█\n")
 	}
 
-	// Status bar
-	b.WriteString("\n")
+	// Layout
+	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
+	mainRendered := paneStyle.Render(main.String())
+	content := lipgloss.JoinHorizontal(lipgloss.Top, sideRendered, mainRendered)
+
+	// Status + help
+	var footer strings.Builder
 	if strings.HasPrefix(m.status, "Error") {
-		b.WriteString(errorStyle.Render(m.status))
+		footer.WriteString(errorStyle.Render(m.status))
 	} else {
-		b.WriteString(statusStyle.Render(m.status))
+		footer.WriteString(statusStyle.Render(m.status))
 	}
-	b.WriteString("\n")
+	footer.WriteString("\n")
+	footer.WriteString(helpStyle.Render("j/k:tasks  J/K:projects  x:complete  a:add  r:refresh  g/G:top/bottom  q:quit"))
 
-	// Help
-	b.WriteString(helpStyle.Render("j/k:navigate  x:complete  a:add  r:refresh  g/G:top/bottom  1-3:views  q:quit"))
-
-	return b.String()
+	return content + "\n" + footer.String()
 }
 
 func dueStr(t task) string {
@@ -356,13 +333,6 @@ func dueStr(t task) string {
 		return " (" + t.Due.Date + ")"
 	}
 	return ""
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func main() {
