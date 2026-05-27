@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,28 +21,7 @@ var (
 	paneStyle     = lipgloss.NewStyle().Padding(0, 1)
 )
 
-type task struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-	Due     *struct {
-		Date string `json:"date"`
-	} `json:"due"`
-	Priority  int    `json:"priority"`
-	ProjectID string `json:"projectId"`
-}
-
-type taskResponse struct {
-	Results []task `json:"results"`
-}
-
-type project struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-type projectResponse struct {
-	Results []project `json:"results"`
-}
+var api = NewTodoistClient()
 
 type model struct {
 	projects      []project
@@ -65,73 +42,60 @@ type dataMsg struct {
 type statusMsg string
 type errMsg string
 
-func fetchData(projectID string) tea.Cmd {
+func fetchInitialData() tea.Cmd {
 	return func() tea.Msg {
-		pOut, err := exec.Command("td", "project", "list", "--json").Output()
+		projects, err := api.GetProjects()
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		var pResp projectResponse
-		if err := json.Unmarshal(pOut, &pResp); err != nil {
-			return errMsg(fmt.Sprintf("Parse error: %v", err))
-		}
-
-		// Default to today
-		tOut, err := exec.Command("td", "today", "--json").Output()
+		tasks, err := api.GetTodayTasks()
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		var tResp taskResponse
-		if err := json.Unmarshal(tOut, &tResp); err != nil {
-			return errMsg(fmt.Sprintf("Parse error: %v", err))
-		}
-
-		return dataMsg{projects: pResp.Results, tasks: tResp.Results}
+		return dataMsg{projects: projects, tasks: tasks}
 	}
 }
 
-func fetchTasksForProject(name string) tea.Cmd {
+func fetchTodayTasks() tea.Cmd {
 	return func() tea.Msg {
-		var tOut []byte
-		var err error
-		if name == "" {
-			tOut, err = exec.Command("td", "task", "list", "--json").Output()
-		} else {
-			tOut, err = exec.Command("td", "task", "list", "--project", name, "--json").Output()
-		}
+		tasks, err := api.GetTodayTasks()
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		var tResp taskResponse
-		if err := json.Unmarshal(tOut, &tResp); err != nil {
-			return errMsg(fmt.Sprintf("Parse error: %v", err))
-		}
-		return dataMsg{tasks: tResp.Results}
+		return dataMsg{tasks: tasks}
 	}
 }
 
-func completeTask(name string) tea.Cmd {
+func fetchProjectTasks(projectID string) tea.Cmd {
 	return func() tea.Msg {
-		_, err := exec.Command("td", "task", "complete", name).Output()
+		tasks, err := api.GetTasksByProject(projectID)
 		if err != nil {
+			return errMsg(fmt.Sprintf("Error: %v", err))
+		}
+		return dataMsg{tasks: tasks}
+	}
+}
+
+func closeTask(id, content string) tea.Cmd {
+	return func() tea.Msg {
+		if err := api.CloseTask(id); err != nil {
 			return errMsg(fmt.Sprintf("Error completing: %v", err))
 		}
-		return statusMsg(fmt.Sprintf("Completed: %s", name))
+		return statusMsg(fmt.Sprintf("Completed: %s", content))
 	}
 }
 
-func addTask(text string) tea.Cmd {
+func createTask(content, projectID string) tea.Cmd {
 	return func() tea.Msg {
-		_, err := exec.Command("td", "add", text).Output()
-		if err != nil {
+		if err := api.CreateTask(content, projectID); err != nil {
 			return errMsg(fmt.Sprintf("Error adding: %v", err))
 		}
-		return statusMsg(fmt.Sprintf("Added: %s", text))
+		return statusMsg(fmt.Sprintf("Added: %s", content))
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return fetchData("")
+	return fetchInitialData()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -166,26 +130,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) refreshTasks() tea.Cmd {
 	if m.projectCursor == 0 {
-		return fetchTasksToday()
+		return fetchTodayTasks()
 	}
 	if m.projectCursor-1 < len(m.projects) {
-		return fetchTasksForProject(m.projects[m.projectCursor-1].Name)
+		return fetchProjectTasks(m.projects[m.projectCursor-1].ID)
 	}
-	return fetchTasksToday()
-}
-
-func fetchTasksToday() tea.Cmd {
-	return func() tea.Msg {
-		tOut, err := exec.Command("td", "today", "--json").Output()
-		if err != nil {
-			return errMsg(fmt.Sprintf("Error: %v", err))
-		}
-		var tResp taskResponse
-		if err := json.Unmarshal(tOut, &tResp); err != nil {
-			return errMsg(fmt.Sprintf("Parse error: %v", err))
-		}
-		return dataMsg{tasks: tResp.Results}
-	}
+	return fetchTodayTasks()
 }
 
 func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -195,7 +145,11 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.inputOn = false
 		m.input = ""
 		if text != "" {
-			return m, addTask(text)
+			var pid string
+			if m.projectCursor > 0 && m.projectCursor-1 < len(m.projects) {
+				pid = m.projects[m.projectCursor-1].ID
+			}
+			return m, createTask(text, pid)
 		}
 	case "esc":
 		m.inputOn = false
@@ -217,7 +171,6 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 
-	// j/k: navigate tasks
 	case "j", "down":
 		if m.taskCursor < len(m.tasks)-1 {
 			m.taskCursor++
@@ -227,7 +180,6 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.taskCursor--
 		}
 
-	// J/K: navigate projects in sidebar (index 0 = Today, 1+ = projects)
 	case "J":
 		if m.projectCursor < len(m.projects) {
 			m.projectCursor++
@@ -250,7 +202,8 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "x":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-			return m, completeTask(m.tasks[m.taskCursor].Content)
+			t := m.tasks[m.taskCursor]
+			return m, closeTask(t.ID, t.Content)
 		}
 	case "a":
 		m.inputOn = true
@@ -263,12 +216,10 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	// Sidebar: project list with Today at top
 	sidebarWidth := 24
 	var sidebar strings.Builder
 	sidebar.WriteString(titleStyle.Render("Projects") + "\n\n")
 
-	// Today entry
 	if m.projectCursor == 0 {
 		sidebar.WriteString(selectedStyle.Render("> Today") + "\n")
 	} else {
@@ -287,7 +238,6 @@ func (m model) View() string {
 		}
 	}
 
-	// Main pane: tasks for selected project
 	var main strings.Builder
 	if m.projectCursor == 0 {
 		main.WriteString(titleStyle.Render("Today") + "\n\n")
@@ -305,17 +255,14 @@ func (m model) View() string {
 		}
 	}
 
-	// Input
 	if m.inputOn {
 		main.WriteString("\n" + titleStyle.Render("Add task: ") + m.input + "█\n")
 	}
 
-	// Layout
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
 	mainRendered := paneStyle.Render(main.String())
 	content := lipgloss.JoinHorizontal(lipgloss.Top, sideRendered, mainRendered)
 
-	// Status + help
 	var footer strings.Builder
 	if strings.HasPrefix(m.status, "Error") {
 		footer.WriteString(errorStyle.Render(m.status))
