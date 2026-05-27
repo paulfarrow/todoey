@@ -140,6 +140,11 @@ func (c *TodoistClient) CloseTask(taskID string) error {
 	return err
 }
 
+func (c *TodoistClient) MoveTask(taskID, projectID string) error {
+	_, err := c.do("POST", "/tasks/"+taskID+"/move", map[string]string{"project_id": projectID})
+	return err
+}
+
 func (c *TodoistClient) SearchTasks(query string) ([]task, error) {
 	data, err := c.do("GET", "/tasks/filter?query="+url.QueryEscape("search: "+query)+"&limit=200", nil)
 	if err != nil {

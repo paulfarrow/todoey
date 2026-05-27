@@ -59,6 +59,7 @@ const (
 	modeGoto
 	modeDetail
 	modeConfirmDelete
+	modeMoveTask
 )
 
 type model struct {
@@ -111,6 +112,15 @@ func fetchProjectTasks(projectID string) tea.Cmd {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
 		return dataMsg{tasks: tasks}
+	}
+}
+
+func moveTask(taskID, taskContent, projectID string) tea.Cmd {
+	return func() tea.Msg {
+		if err := api.MoveTask(taskID, projectID); err != nil {
+			return errMsg(fmt.Sprintf("Error moving: %v", err))
+		}
+		return statusMsg(fmt.Sprintf("Moved: %s", taskContent))
 	}
 }
 
@@ -231,7 +241,7 @@ func (m model) gotoCompletion() string {
 func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
-		if m.mode == modeGoto {
+		if m.mode == modeGoto || m.mode == modeMoveTask {
 			if c := m.gotoCompletion(); c != "" {
 				m.input = c
 			}
@@ -260,6 +270,14 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.projectCursor = i + 1
 					m.status = "Loading..."
 					return m, m.refreshTasks()
+				}
+			}
+		case modeMoveTask:
+			lower := strings.ToLower(text)
+			t := m.tasks[m.taskCursor]
+			for _, p := range m.projects {
+				if strings.ToLower(p.Name) == lower {
+					return m, moveTask(t.ID, t.Content, p.ID)
 				}
 			}
 		case modeAdd:
@@ -342,6 +360,11 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.mode = modeGoto
 		m.input = ""
+	case "alt+m":
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			m.mode = modeMoveTask
+			m.input = ""
+		}
 	case "r":
 		m.status = "Refreshing..."
 		return m, m.refreshTasks()
@@ -475,6 +498,12 @@ func (m model) View() string {
 	} else if m.mode == modeConfirmDelete && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		t := m.tasks[m.taskCursor]
 		main.WriteString("\n" + errorStyle.Render("  Delete \""+t.Content+"\"? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
+	} else if m.mode == modeMoveTask && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+		ghost := ""
+		if c := m.gotoCompletion(); c != "" && c != m.input {
+			ghost = dimStyle.Render(c[len(m.input):])
+		}
+		main.WriteString("\n" + titleStyle.Render("  Move to project: ") + m.input + ghost + "█\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
@@ -492,7 +521,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  r:refresh  g/G:top/bottom  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:refresh  g/G:top/bottom  q:quit"),
 	)
 
 	return content + "\n" + footer
