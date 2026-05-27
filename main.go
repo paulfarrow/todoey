@@ -70,6 +70,7 @@ type model struct {
 	status        string
 	input         string
 	mode          inputMode
+	searchQuery   string
 	width         int
 	height        int
 }
@@ -254,20 +255,24 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch origMode {
 		case modeSearch:
 			if text != "" {
+				m.searchQuery = text
 				m.status = "Searching..."
 				return m, searchTasks(text)
 			}
+			m.searchQuery = ""
 			return m, m.refreshTasks()
 		case modeGoto:
 			lower := strings.ToLower(text)
 			if lower == "today" {
 				m.projectCursor = 0
+				m.searchQuery = ""
 				m.status = "Loading..."
 				return m, m.refreshTasks()
 			}
 			for i, p := range m.projects {
 				if strings.ToLower(p.Name) == lower {
 					m.projectCursor = i + 1
+					m.searchQuery = ""
 					m.status = "Loading..."
 					return m, m.refreshTasks()
 				}
@@ -321,12 +326,14 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "J":
 		if m.projectCursor < len(m.projects) {
 			m.projectCursor++
+			m.searchQuery = ""
 			m.status = "Loading..."
 			return m, m.refreshTasks()
 		}
 	case "K":
 		if m.projectCursor > 0 {
 			m.projectCursor--
+			m.searchQuery = ""
 			m.status = "Loading..."
 			return m, m.refreshTasks()
 		}
@@ -366,6 +373,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input = ""
 		}
 	case "r":
+		m.searchQuery = ""
 		m.status = "Refreshing..."
 		return m, m.refreshTasks()
 	}
@@ -464,7 +472,9 @@ func (m model) View() string {
 	}
 
 	var main strings.Builder
-	if m.projectCursor == 0 {
+	if m.searchQuery != "" {
+		main.WriteString(titleStyle.Render("◆ Search: "+m.searchQuery) + "  " + dimStyle.Render("(r to clear, J/K to browse projects)") + "\n\n")
+	} else if m.projectCursor == 0 {
 		main.WriteString(titleStyle.Render("◆ Today") + "\n\n")
 	} else if m.projectCursor-1 < len(m.projects) {
 		main.WriteString(titleStyle.Render("◆ "+m.projects[m.projectCursor-1].Name) + "\n\n")
