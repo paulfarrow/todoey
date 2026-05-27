@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 )
 
@@ -122,6 +123,18 @@ func (c *TodoistClient) DeleteTask(taskID string) error {
 func (c *TodoistClient) CloseTask(taskID string) error {
 	_, err := c.do("POST", "/tasks/"+taskID+"/close", nil)
 	return err
+}
+
+func (c *TodoistClient) SearchTasks(query string) ([]task, error) {
+	data, err := c.do("GET", "/tasks/filter?query="+url.QueryEscape("search: "+query)+"&limit=200", nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp paginatedTasks
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
 }
 
 func (c *TodoistClient) CreateTask(text, projectID string) error {

@@ -10,18 +10,36 @@ import (
 )
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("170"))
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
+	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("52"))
 	normalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	sidebarStyle  = lipgloss.NewStyle().BorderRight(true).BorderStyle(lipgloss.NormalBorder()).Padding(0, 1)
-	paneStyle     = lipgloss.NewStyle().Padding(0, 1)
+	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))
+	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	sidebarStyle  = lipgloss.NewStyle().
+			BorderRight(true).
+			BorderStyle(lipgloss.ThickBorder()).
+			BorderForeground(lipgloss.Color("52")).
+			Background(lipgloss.Color("234")).
+			Padding(0, 1)
+	paneStyle  = lipgloss.NewStyle().Padding(0, 2)
+	footerStyle = lipgloss.NewStyle().
+			BorderTop(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("237")).
+			Padding(0, 1)
 )
 
 var api = NewTodoistClient()
+
+type inputMode int
+
+const (
+	modeNormal inputMode = iota
+	modeAdd
+	modeSearch
+)
 
 type model struct {
 	projects      []project
@@ -30,7 +48,7 @@ type model struct {
 	taskCursor    int
 	status        string
 	input         string
-	inputOn       bool
+	mode          inputMode
 	width         int
 	height        int
 }
@@ -69,6 +87,16 @@ func fetchTodayTasks() tea.Cmd {
 func fetchProjectTasks(projectID string) tea.Cmd {
 	return func() tea.Msg {
 		tasks, err := api.GetTasksByProject(projectID)
+		if err != nil {
+			return errMsg(fmt.Sprintf("Error: %v", err))
+		}
+		return dataMsg{tasks: tasks}
+	}
+}
+
+func searchTasks(query string) tea.Cmd {
+	return func() tea.Msg {
+		tasks, err := api.SearchTasks(query)
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
@@ -129,7 +157,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = string(msg)
 
 	case tea.KeyMsg:
-		if m.inputOn {
+		if m.mode != modeNormal {
 			return m.handleInput(msg)
 		}
 		return m.handleNormal(msg)
@@ -151,7 +179,17 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		text := strings.TrimSpace(m.input)
-		m.inputOn = false
+		if m.mode == modeSearch {
+			m.mode = modeNormal
+			m.input = ""
+			if text != "" {
+				m.status = "Searching..."
+				return m, searchTasks(text)
+			}
+			return m, m.refreshTasks()
+		}
+		// modeAdd
+		m.mode = modeNormal
 		m.input = ""
 		if text != "" {
 			var pid string
@@ -161,7 +199,7 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, createTask(text, pid)
 		}
 	case "esc":
-		m.inputOn = false
+		m.mode = modeNormal
 		m.input = ""
 	case "backspace":
 		if len(m.input) > 0 {
@@ -220,7 +258,10 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, deleteTask(t.ID, t.Content)
 		}
 	case "a":
-		m.inputOn = true
+		m.mode = modeAdd
+		m.input = ""
+	case "/":
+		m.mode = modeSearch
 		m.input = ""
 	case "r":
 		m.status = "Refreshing..."
@@ -232,61 +273,68 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	sidebarWidth := 24
 	var sidebar strings.Builder
-	sidebar.WriteString(titleStyle.Render("Projects") + "\n\n")
+	sidebar.WriteString(titleStyle.Render("◆ Projects") + "\n\n")
 
-	if m.projectCursor == 0 {
-		sidebar.WriteString(selectedStyle.Render("> Today") + "\n")
-	} else {
-		sidebar.WriteString(normalStyle.Render("  Today") + "\n")
+	itemWidth := sidebarWidth - 2
+	renderItem := func(label string, selected bool) string {
+		if selected {
+			return selectedStyle.Width(itemWidth).Render(" " + label)
+		}
+		return normalStyle.Render("  " + label)
 	}
 
+	sidebar.WriteString(renderItem("Today", m.projectCursor == 0) + "\n")
 	for i, p := range m.projects {
 		name := p.Name
 		if len(name) > sidebarWidth-4 {
 			name = name[:sidebarWidth-4]
 		}
-		if i+1 == m.projectCursor {
-			sidebar.WriteString(selectedStyle.Render("> "+name) + "\n")
-		} else {
-			sidebar.WriteString(normalStyle.Render("  "+name) + "\n")
-		}
+		sidebar.WriteString(renderItem(name, i+1 == m.projectCursor) + "\n")
 	}
 
 	var main strings.Builder
 	if m.projectCursor == 0 {
-		main.WriteString(titleStyle.Render("Today") + "\n\n")
+		main.WriteString(titleStyle.Render("◆ Today") + "\n\n")
 	} else if m.projectCursor-1 < len(m.projects) {
-		main.WriteString(titleStyle.Render(m.projects[m.projectCursor-1].Name) + "\n\n")
+		main.WriteString(titleStyle.Render("◆ "+m.projects[m.projectCursor-1].Name) + "\n\n")
 	}
 	if len(m.tasks) == 0 {
 		main.WriteString(dimStyle.Render("  No tasks") + "\n")
 	}
 	for i, t := range m.tasks {
+		due := dueStr(t)
 		if i == m.taskCursor {
-			main.WriteString(selectedStyle.Render("> "+t.Content) + dimStyle.Render(dueStr(t)) + "\n")
+			main.WriteString(selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + "\n")
 		} else {
-			main.WriteString(normalStyle.Render("  "+t.Content) + dimStyle.Render(dueStr(t)) + "\n")
+			main.WriteString(normalStyle.Render("  ○ "+t.Content) + dimStyle.Render(due) + "\n")
 		}
 	}
 
-	if m.inputOn {
-		main.WriteString("\n" + titleStyle.Render("Add task: ") + m.input + "█\n")
+	if m.mode == modeAdd {
+		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input + "█\n")
+	} else if m.mode == modeSearch {
+		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input + "█\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
 	mainRendered := paneStyle.Render(main.String())
 	content := lipgloss.JoinHorizontal(lipgloss.Top, sideRendered, mainRendered)
 
-	var footer strings.Builder
+	statusText := m.status
+	statusRendered := statusStyle.Render(statusText)
 	if strings.HasPrefix(m.status, "Error") {
-		footer.WriteString(errorStyle.Render(m.status))
-	} else {
-		footer.WriteString(statusStyle.Render(m.status))
+		statusRendered = errorStyle.Render(statusText)
 	}
-	footer.WriteString("\n")
-	footer.WriteString(helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  r:refresh  g/G:top/bottom  q:quit"))
+	footerWidth := m.width
+	if footerWidth == 0 {
+		footerWidth = 80
+	}
+	footer := footerStyle.Width(footerWidth - 2).Render(
+		statusRendered + "\n" +
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  r:refresh  g/G:top/bottom  q:quit"),
+	)
 
-	return content + "\n" + footer.String()
+	return content + "\n" + footer
 }
 
 func dueStr(t task) string {
