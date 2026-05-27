@@ -13,13 +13,28 @@ import (
 const baseURL = "https://api.todoist.com/api/v1"
 
 type task struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-	Due     *struct {
-		Date string `json:"date"`
+	ID          string `json:"id"`
+	Content     string `json:"content"`
+	Description string `json:"description"`
+	Due         *struct {
+		Date        string `json:"date"`
+		String      string `json:"string"`
+		IsRecurring bool   `json:"is_recurring"`
 	} `json:"due"`
-	Priority  int    `json:"priority"`
-	ProjectID string `json:"project_id"`
+	Deadline *struct {
+		Date string `json:"date"`
+	} `json:"deadline"`
+	Duration *struct {
+		Amount int    `json:"amount"`
+		Unit   string `json:"unit"`
+	} `json:"duration"`
+	Priority  int      `json:"priority"`
+	ProjectID string   `json:"project_id"`
+	SectionID string   `json:"section_id"`
+	ParentID  string   `json:"parent_id"`
+	Labels    []string `json:"labels"`
+	AddedAt   string   `json:"added_at"`
+	UpdatedAt string   `json:"updated_at"`
 }
 
 type project struct {

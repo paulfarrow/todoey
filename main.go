@@ -57,6 +57,8 @@ const (
 	modeAdd
 	modeSearch
 	modeGoto
+	modeDetail
+	modeConfirmDelete
 )
 
 type model struct {
@@ -175,6 +177,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = string(msg)
 
 	case tea.KeyMsg:
+		if m.mode == modeDetail {
+			if msg.String() == "esc" || msg.String() == "q" || msg.String() == "enter" {
+				m.mode = modeNormal
+			}
+			return m, nil
+		}
+		if m.mode == modeConfirmDelete {
+			switch msg.String() {
+			case "y", "Y":
+				t := m.tasks[m.taskCursor]
+				m.mode = modeNormal
+				return m, deleteTask(t.ID, t.Content)
+			default:
+				m.mode = modeNormal
+			}
+			return m, nil
+		}
 		if m.mode != modeNormal {
 			return m.handleInput(msg)
 		}
@@ -308,8 +327,11 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-			t := m.tasks[m.taskCursor]
-			return m, deleteTask(t.ID, t.Content)
+			m.mode = modeConfirmDelete
+		}
+	case "enter":
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			m.mode = modeDetail
 		}
 	case "a":
 		m.mode = modeAdd
@@ -327,7 +349,76 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) viewDetail() string {
+	t := m.tasks[m.taskCursor]
+
+	w := m.width
+	if w == 0 {
+		w = 80
+	}
+
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("52")).
+		Padding(1, 2).
+		Width(w - 4)
+
+	field := func(label, value string) string {
+		if value == "" {
+			return ""
+		}
+		return dimStyle.Render(label+": ") + normalStyle.Render(value) + "\n"
+	}
+
+	priorities := map[int]string{4: "p1 (urgent)", 3: "p2 (high)", 2: "p3 (medium)", 1: "p4 (normal)"}
+
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("◆ "+t.Content) + "\n\n")
+
+	if t.Description != "" {
+		b.WriteString(normalStyle.Render(t.Description) + "\n\n")
+	}
+
+	if t.Due != nil {
+		s := t.Due.Date
+		if t.Due.String != "" {
+			s = t.Due.String + " (" + t.Due.Date + ")"
+		}
+		if t.Due.IsRecurring {
+			s += " 🔁"
+		}
+		b.WriteString(field("Due", s))
+	}
+	if t.Deadline != nil && t.Deadline.Date != "" {
+		b.WriteString(field("Deadline", t.Deadline.Date))
+	}
+	if t.Duration != nil {
+		b.WriteString(field("Duration", fmt.Sprintf("%d %s", t.Duration.Amount, t.Duration.Unit)))
+	}
+	b.WriteString(field("Priority", priorities[t.Priority]))
+	b.WriteString(field("Project", m.projectTag(t.ProjectID)))
+	if len(t.Labels) > 0 {
+		b.WriteString(field("Labels", strings.Join(t.Labels, ", ")))
+	}
+	if t.SectionID != "" {
+		b.WriteString(field("Section ID", t.SectionID))
+	}
+	if t.ParentID != "" {
+		b.WriteString(field("Parent ID", t.ParentID))
+	}
+	b.WriteString(field("ID", t.ID))
+	b.WriteString(field("Added", t.AddedAt))
+	b.WriteString(field("Updated", t.UpdatedAt))
+
+	b.WriteString("\n" + helpStyle.Render("esc / enter: back"))
+
+	return style.Render(b.String())
+}
+
 func (m model) View() string {
+	if m.mode == modeDetail && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+		return m.viewDetail()
+	}
 	sidebarWidth := 24
 	var sidebar strings.Builder
 	sidebar.WriteString(titleStyle.Render("◆ Projects") + "\n\n")
@@ -381,6 +472,9 @@ func (m model) View() string {
 			ghost = dimStyle.Render(c[len(m.input):])
 		}
 		main.WriteString("\n" + titleStyle.Render("  Go to project: ") + m.input + ghost + "█\n")
+	} else if m.mode == modeConfirmDelete && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+		t := m.tasks[m.taskCursor]
+		main.WriteString("\n" + errorStyle.Render("  Delete \""+t.Content+"\"? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
