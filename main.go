@@ -442,6 +442,12 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.refreshTasks()
 		}
 
+	case "T":
+		m.projectCursor = 0
+		m.searchQuery = ""
+		m.status = "Loading..."
+		return m, m.refreshTasks()
+
 	case "g":
 		m.taskCursor = 0
 	case "G":
