@@ -157,6 +157,11 @@ func (c *TodoistClient) SearchTasks(query string) ([]task, error) {
 	return resp.Results, nil
 }
 
+func (c *TodoistClient) RescheduleTask(taskID, dueString string) error {
+	_, err := c.do("POST", "/tasks/"+taskID, map[string]string{"due_string": dueString})
+	return err
+}
+
 func (c *TodoistClient) CreateTask(text, projectID string) error {
 	body := map[string]string{"text": text}
 	if projectID != "" {
