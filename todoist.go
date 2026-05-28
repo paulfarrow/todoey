@@ -162,11 +162,8 @@ func (c *TodoistClient) RescheduleTask(taskID, dueString string) error {
 	return err
 }
 
-func (c *TodoistClient) CreateTask(text, projectID string) error {
+func (c *TodoistClient) CreateTask(text string) error {
 	body := map[string]string{"text": text}
-	if projectID != "" {
-		body["project_id"] = projectID
-	}
 	_, err := c.do("POST", "/tasks/quick", body)
 	return err
 }
