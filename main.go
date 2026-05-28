@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -570,8 +571,14 @@ func (m model) View() string {
 	if len(m.tasks) == 0 {
 		main.WriteString(dimStyle.Render("  No tasks") + "\n")
 	}
+	today := time.Now().Format("2006-01-02")
 	for i, t := range m.tasks {
 		due := dueStr(t)
+		overdue := t.Due != nil && t.Due.Date != "" && t.Due.Date < today
+		dueRendered := dimStyle.Render(due)
+		if overdue {
+			dueRendered = errorStyle.Render(due)
+		}
 		tag := m.projectTag(t.ProjectID)
 		if tag != "" {
 			tag = " " + tag
@@ -581,13 +588,13 @@ func (m model) View() string {
 		var line string
 		switch {
 		case isCursor && isMarked:
-			line = markedCursorStyle.Render(" ▶ "+t.Content) + dimStyle.Render(due) + tag
+			line = markedCursorStyle.Render(" ▶ "+t.Content) + dueRendered + tag
 		case isCursor:
-			line = selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + tag
+			line = selectedStyle.Render(" ○ "+t.Content) + dueRendered + tag
 		case isMarked:
-			line = markedStyle.Render(" ● "+t.Content) + dimStyle.Render(due) + tag
+			line = markedStyle.Render(" ● "+t.Content) + dueRendered + tag
 		default:
-			line = normalStyle.Render("  ○ "+t.Content) + dimStyle.Render(due) + tag
+			line = normalStyle.Render("  ○ "+t.Content) + dueRendered + tag
 		}
 		main.WriteString(line + "\n")
 	}
