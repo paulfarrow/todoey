@@ -169,9 +169,9 @@ func rescheduleTask(id, content, dueString string) tea.Cmd {
 	}
 }
 
-func createTask(content, projectID string) tea.Cmd {
+func createTask(content string) tea.Cmd {
 	return func() tea.Msg {
-		if err := api.CreateTask(content, projectID); err != nil {
+		if err := api.CreateTask(content); err != nil {
 			return errMsg(fmt.Sprintf("Error adding: %v", err))
 		}
 		return statusMsg(fmt.Sprintf("Added: %s", content))
@@ -289,12 +289,35 @@ func (m model) gotoCompletion() string {
 	return ""
 }
 
+func (m model) addTaskCompletion() string {
+	idx := strings.LastIndex(m.input, "#")
+	if idx < 0 {
+		return ""
+	}
+	fragment := strings.ToLower(m.input[idx+1:])
+	if fragment == "" {
+		return ""
+	}
+	for _, p := range m.projects {
+		if strings.HasPrefix(strings.ToLower(p.Name), fragment) {
+			return p.Name
+		}
+	}
+	return ""
+}
+
 func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		if m.mode == modeGoto || m.mode == modeMoveTask {
 			if c := m.gotoCompletion(); c != "" {
 				m.input = c
+			}
+		}
+		if m.mode == modeAdd {
+			if c := m.addTaskCompletion(); c != "" {
+				idx := strings.LastIndex(m.input, "#")
+				m.input = m.input[:idx+1] + c
 			}
 		}
 	case "enter":
@@ -352,11 +375,7 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case modeAdd:
 			if text != "" {
-				var pid string
-				if m.projectCursor > 0 && m.projectCursor-1 < len(m.projects) {
-					pid = m.projects[m.projectCursor-1].ID
-				}
-				return m, createTask(text, pid)
+				return m, createTask(text)
 			}
 		}
 	case "esc", "ctrl+c":
@@ -625,7 +644,13 @@ func (m model) View() string {
 	}
 
 	if m.mode == modeAdd {
-		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input + "█\n")
+		ghost := ""
+		if c := m.addTaskCompletion(); c != "" {
+			idx := strings.LastIndex(m.input, "#")
+			fragment := m.input[idx+1:]
+			ghost = dimStyle.Render(c[len(fragment):])
+		}
+		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input + ghost + "█\n")
 	} else if m.mode == modeSearch {
 		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input + "█\n")
 	} else if m.mode == modeGoto {
