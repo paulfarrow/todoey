@@ -64,6 +64,7 @@ const (
 	modeConfirmDelete
 	modeMoveTask
 	modeVisual
+	modeReschedule
 )
 
 type model struct {
@@ -156,6 +157,15 @@ func closeTask(id, content string) tea.Cmd {
 			return errMsg(fmt.Sprintf("Error completing: %v", err))
 		}
 		return statusMsg(fmt.Sprintf("Completed: %s", content))
+	}
+}
+
+func rescheduleTask(id, content, dueString string) tea.Cmd {
+	return func() tea.Msg {
+		if err := api.RescheduleTask(id, dueString); err != nil {
+			return errMsg(fmt.Sprintf("Error rescheduling: %v", err))
+		}
+		return statusMsg(fmt.Sprintf("Rescheduled: %s", content))
 	}
 }
 
@@ -330,6 +340,16 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, tea.Batch(cmds...)
 				}
 			}
+		case modeReschedule:
+			if text != "" {
+				targets := m.selectedTasks()
+				m.selected = nil
+				var cmds []tea.Cmd
+				for _, t := range targets {
+					cmds = append(cmds, rescheduleTask(t.ID, t.Content, text))
+				}
+				return m, tea.Batch(cmds...)
+			}
 		case modeAdd:
 			if text != "" {
 				var pid string
@@ -459,6 +479,11 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "alt+m":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeMoveTask
+			m.input = ""
+		}
+	case "s":
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			m.mode = modeReschedule
 			m.input = ""
 		}
 	case "r":
@@ -623,6 +648,8 @@ func (m model) View() string {
 			ghost = dimStyle.Render(c[len(m.input):])
 		}
 		main.WriteString("\n" + titleStyle.Render("  Move to project: ") + m.input + ghost + "█\n")
+	} else if m.mode == modeReschedule && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+		main.WriteString("\n" + titleStyle.Render("  Reschedule to: ") + m.input + "█\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
@@ -640,7 +667,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:refresh  g/G:top/bottom  V:visual  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  s:reschedule  r:refresh  g/G:top/bottom  V:visual  q:quit"),
 	)
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
