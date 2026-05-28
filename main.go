@@ -11,8 +11,9 @@ import (
 
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("203"))
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("52"))
-	markedStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("90"))
+	selectedStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("52"))
+	markedStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("30"))
+	markedCursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(lipgloss.Color("37"))
 	normalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))
@@ -544,7 +545,7 @@ func (m model) View() string {
 		var line string
 		switch {
 		case isCursor && isMarked:
-			line = markedStyle.Render(" ● "+t.Content) + dimStyle.Render(due) + tag
+			line = markedCursorStyle.Render(" ▶ "+t.Content) + dimStyle.Render(due) + tag
 		case isCursor:
 			line = selectedStyle.Render(" ○ "+t.Content) + dimStyle.Render(due) + tag
 		case isMarked:
@@ -566,8 +567,13 @@ func (m model) View() string {
 		}
 		main.WriteString("\n" + titleStyle.Render("  Go to project: ") + m.input + ghost + "█\n")
 	} else if m.mode == modeConfirmDelete && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-		t := m.tasks[m.taskCursor]
-		main.WriteString("\n" + errorStyle.Render("  Delete \""+t.Content+"\"? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
+		var deletePrompt string
+		if len(m.selected) > 1 {
+			deletePrompt = fmt.Sprintf("  Delete %d tasks? ", len(m.selected))
+		} else {
+			deletePrompt = "  Delete \"" + m.tasks[m.taskCursor].Content + "\"? "
+		}
+		main.WriteString("\n" + errorStyle.Render(deletePrompt) + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	} else if m.mode == modeMoveTask && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		ghost := ""
 		if c := m.gotoCompletion(); c != "" && c != m.input {
