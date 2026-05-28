@@ -195,7 +195,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		if m.mode == modeDetail {
-			if msg.String() == "esc" || msg.String() == "q" || msg.String() == "enter" {
+			if msg.String() == "esc" || msg.String() == "ctrl+c" || msg.String() == "q" || msg.String() == "enter" {
 				m.mode = modeNormal
 			}
 			return m, nil
@@ -338,7 +338,7 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, createTask(text, pid)
 			}
 		}
-	case "esc":
+	case "esc", "ctrl+c":
 		m.mode = modeNormal
 		m.input = ""
 	case "backspace":
@@ -355,7 +355,7 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q":
 		return m, tea.Quit
 
 	case "V":
@@ -422,7 +422,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.taskCursor++
 			}
 		}
-	case "esc":
+	case "esc", "ctrl+c":
 		m.mode = modeNormal
 		m.selected = nil
 
