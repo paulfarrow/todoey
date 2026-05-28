@@ -62,6 +62,7 @@ const (
 	modeDetail
 	modeConfirmDelete
 	modeMoveTask
+	modeVisual
 )
 
 type model struct {
@@ -70,6 +71,7 @@ type model struct {
 	projectCursor int
 	taskCursor    int
 	selected      map[int]bool
+	visualAnchor  int
 	status        string
 	input         string
 	mode          inputMode
@@ -214,12 +216,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.mode != modeNormal {
+		if m.mode != modeNormal && m.mode != modeVisual {
 			return m.handleInput(msg)
 		}
 		return m.handleNormal(msg)
 	}
 	return m, nil
+}
+
+func visualRange(anchor, cursor int) map[int]bool {
+	out := make(map[int]bool)
+	lo, hi := anchor, cursor
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	for i := lo; i <= hi; i++ {
+		out[i] = true
+	}
+	return out
 }
 
 func (m model) selectedTasks() []task {
@@ -344,13 +358,33 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 
+	case "V":
+		if len(m.tasks) > 0 {
+			if m.mode == modeVisual {
+				m.mode = modeNormal // stop auto-selecting, keep selection
+			} else {
+				m.mode = modeVisual
+				m.visualAnchor = m.taskCursor
+				if m.selected == nil {
+					m.selected = make(map[int]bool)
+				}
+				m.selected[m.taskCursor] = true
+			}
+		}
+
 	case "j", "down":
 		if m.taskCursor < len(m.tasks)-1 {
 			m.taskCursor++
+			if m.mode == modeVisual {
+				m.selected = visualRange(m.visualAnchor, m.taskCursor)
+			}
 		}
 	case "k", "up":
 		if m.taskCursor > 0 {
 			m.taskCursor--
+			if m.mode == modeVisual {
+				m.selected = visualRange(m.visualAnchor, m.taskCursor)
+			}
 		}
 
 	case "J":
@@ -389,6 +423,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "esc":
+		m.mode = modeNormal
 		m.selected = nil
 
 	case "x":
@@ -397,6 +432,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		targets := m.selectedTasks()
 		m.selected = nil
+		m.mode = modeNormal
 		var cmds []tea.Cmd
 		for _, t := range targets {
 			cmds = append(cmds, closeTask(t.ID, t.Content))
@@ -597,8 +633,14 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:refresh  g/G:top/bottom  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:refresh  g/G:top/bottom  V:visual  q:quit"),
 	)
+	if m.mode == modeVisual {
+		footer = footerStyle.Width(footerWidth - 2).Render(
+			markedCursorStyle.Render(" VISUAL ") + "  " + statusRendered + "\n" +
+				helpStyle.Render("j/k:extend selection  V/esc:exit  x:complete  d:delete  alt+m:move"),
+		)
+	}
 
 	return content + "\n" + footer
 }
