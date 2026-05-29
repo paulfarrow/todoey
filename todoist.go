@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 )
 
 const baseURL = "https://api.todoist.com/api/v1"
@@ -48,8 +47,8 @@ type TodoistClient struct {
 }
 
 func NewTodoistClient() *TodoistClient {
-	token := os.Getenv("TODOIST_API_TOKEN")
-	return &TodoistClient{token: token, client: &http.Client{}}
+	cfg := loadConfig()
+	return &TodoistClient{token: cfg.APIToken, client: &http.Client{}}
 }
 
 func (c *TodoistClient) do(method, path string, body interface{}) ([]byte, error) {
