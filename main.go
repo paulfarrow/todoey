@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -718,6 +719,22 @@ func dueStr(t task) string {
 }
 
 func main() {
+	addTask := flag.String("a", "", "")
+	flag.StringVar(addTask, "add-task", "", "Add a task and exit")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: todoist-tui [-a, --add-task \"task text\"]\n")
+	}
+	flag.Parse()
+
+	if *addTask != "" {
+		if err := api.CreateTask(*addTask); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Added: %s\n", *addTask)
+		return
+	}
+
 	p := tea.NewProgram(model{status: "Loading..."}, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
