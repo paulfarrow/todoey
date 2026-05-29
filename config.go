@@ -30,6 +30,10 @@ func loadConfig() config {
 		cfg.APIToken = token
 	}
 
+	if cfg.RefreshInterval <= 0 {
+		cfg.RefreshInterval = 60
+	}
+
 	return cfg
 }
 
