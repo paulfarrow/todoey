@@ -725,7 +725,7 @@ func (m model) View() string {
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
 			markedCursorStyle.Render(" VISUAL ") + "  " + statusRendered + "\n" +
-				helpStyle.Render("j/k:extend selection  V/esc:exit  x:complete  d:delete  alt+m:move"),
+				helpStyle.Render("j/k:extend selection  V/esc:exit  x:complete  d:delete  alt+m:move s:reschedule"),
 		)
 	}
 
