@@ -184,6 +184,11 @@ func createTask(content string) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
+	if m.cfg.AutoRefresh && m.cfg.RefreshInterval > 0 {
+		gen := m.refreshGen
+		tick := tea.Tick(time.Duration(m.cfg.RefreshInterval)*time.Second, func(time.Time) tea.Msg { return tickMsg{gen} })
+		return tea.Batch(fetchInitialData(), tick)
+	}
 	return fetchInitialData()
 }
 
