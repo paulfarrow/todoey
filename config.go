@@ -7,7 +7,9 @@ import (
 )
 
 type config struct {
-	APIToken string `json:"api_token"`
+	APIToken        string `json:"api_token"`
+	AutoRefresh     bool   `json:"auto_refresh"`
+	RefreshInterval int    `json:"refresh_interval_seconds"`
 }
 
 func loadConfig() config {

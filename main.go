@@ -69,12 +69,14 @@ const (
 )
 
 type model struct {
+	cfg           config
 	projects      []project
 	tasks         []task
 	projectCursor int
 	taskCursor    int
 	selected      map[int]bool
 	visualAnchor  int
+	refreshGen    int
 	status        string
 	input         string
 	mode          inputMode
@@ -82,6 +84,8 @@ type model struct {
 	width         int
 	height        int
 }
+
+type tickMsg struct{ gen int }
 
 type dataMsg struct {
 	projects []project
@@ -200,7 +204,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusMsg:
 		m.status = string(msg)
-		return m, m.refreshTasks()
+		m.refreshGen++; return m, m.refreshTasks()
+
+	case tickMsg:
+		if msg.gen == m.refreshGen {
+			m.refreshGen++; return m, m.refreshTasks()
+		}
 
 	case errMsg:
 		m.status = string(msg)
@@ -265,13 +274,20 @@ func (m model) selectedTasks() []task {
 }
 
 func (m model) refreshTasks() tea.Cmd {
+	var fetch tea.Cmd
 	if m.projectCursor == 0 {
-		return fetchTodayTasks()
+		fetch = fetchTodayTasks()
+	} else if m.projectCursor-1 < len(m.projects) {
+		fetch = fetchProjectTasks(m.projects[m.projectCursor-1].ID)
+	} else {
+		fetch = fetchTodayTasks()
 	}
-	if m.projectCursor-1 < len(m.projects) {
-		return fetchProjectTasks(m.projects[m.projectCursor-1].ID)
+	if m.cfg.AutoRefresh && m.cfg.RefreshInterval > 0 {
+		gen := m.refreshGen
+		tick := tea.Tick(time.Duration(m.cfg.RefreshInterval)*time.Second, func(time.Time) tea.Msg { return tickMsg{gen} })
+		return tea.Batch(fetch, tick)
 	}
-	return fetchTodayTasks()
+	return fetch
 }
 
 func (m model) gotoCompletion() string {
@@ -334,21 +350,21 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, searchTasks(text)
 			}
 			m.searchQuery = ""
-			return m, m.refreshTasks()
+			m.refreshGen++; return m, m.refreshTasks()
 		case modeGoto:
 			lower := strings.ToLower(text)
 			if lower == "today" {
 				m.projectCursor = 0
 				m.searchQuery = ""
 				m.status = "Loading..."
-				return m, m.refreshTasks()
+				m.refreshGen++; return m, m.refreshTasks()
 			}
 			for i, p := range m.projects {
 				if strings.ToLower(p.Name) == lower {
 					m.projectCursor = i + 1
 					m.searchQuery = ""
 					m.status = "Loading..."
-					return m, m.refreshTasks()
+					m.refreshGen++; return m, m.refreshTasks()
 				}
 			}
 		case modeMoveTask:
@@ -433,21 +449,21 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.projectCursor++
 			m.searchQuery = ""
 			m.status = "Loading..."
-			return m, m.refreshTasks()
+			m.refreshGen++; return m, m.refreshTasks()
 		}
 	case "K":
 		if m.projectCursor > 0 {
 			m.projectCursor--
 			m.searchQuery = ""
 			m.status = "Loading..."
-			return m, m.refreshTasks()
+			m.refreshGen++; return m, m.refreshTasks()
 		}
 
 	case "T":
 		m.projectCursor = 0
 		m.searchQuery = ""
 		m.status = "Loading..."
-		return m, m.refreshTasks()
+		m.refreshGen++; return m, m.refreshTasks()
 
 	case "g":
 		m.taskCursor = 0
@@ -515,7 +531,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.searchQuery = ""
 		m.status = "Refreshing..."
-		return m, m.refreshTasks()
+		m.refreshGen++; return m, m.refreshTasks()
 	}
 	return m, nil
 }
@@ -735,7 +751,7 @@ func main() {
 		return
 	}
 
-	p := tea.NewProgram(model{status: "Loading..."}, tea.WithAltScreen())
+	p := tea.NewProgram(model{cfg: loadConfig(), status: "Loading..."}, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
