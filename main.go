@@ -203,7 +203,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.projects = msg.projects
 		}
 		m.tasks = msg.tasks
-		m.taskCursor = 0
+		if n := len(msg.tasks); m.taskCursor >= n {
+			m.taskCursor = max(0, n-1)
+		}
 		m.selected = nil
 		m.status = fmt.Sprintf("%d tasks", len(msg.tasks))
 
