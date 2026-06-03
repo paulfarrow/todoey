@@ -551,12 +551,12 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeMoveTask
 			m.input = ""
 		}
-	case "s":
+	case "r":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeReschedule
 			m.input = ""
 		}
-	case "r":
+	case "alt+r":
 		m.searchQuery = ""
 		m.status = "Refreshing..."
 		m.refreshGen++; return m, m.refreshTasks()
@@ -641,7 +641,7 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "E":
 		m.mode = modeDetailEditDesc
 		m.detailField = t.Description
-	case "s":
+	case "r":
 		m.mode = modeDetailReschedule
 		m.detailField = ""
 	case "x":
@@ -740,7 +740,7 @@ func (m model) viewDetail() string {
 	case modeDetailConfirmDelete:
 		b.WriteString(errorStyle.Render("  Delete this task? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	default:
-		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  s:reschedule  x:complete  d:delete  alt+m:move  q/esc:back") + "\n")
+		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  r:reschedule  x:complete  d:delete  alt+m:move  q/esc:back") + "\n")
 	}
 
 	return style.Render(b.String())
@@ -861,12 +861,12 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  s:reschedule  r:refresh  g/G:top/bottom  V:visual  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  alt+r:refresh  g/G:top/bottom  V:visual  q:quit"),
 	)
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
 			markedCursorStyle.Render(" VISUAL ") + "  " + statusRendered + "\n" +
-				helpStyle.Render("j/k:extend selection  V/esc:exit  x:complete  d:delete  alt+m:move s:reschedule"),
+				helpStyle.Render("j/k:extend selection  V/esc:exit  x:complete  d:delete  alt+m:move r:reschedule"),
 		)
 	}
 
