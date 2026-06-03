@@ -66,6 +66,11 @@ const (
 	modeMoveTask
 	modeVisual
 	modeReschedule
+	modeDetailEditContent
+	modeDetailEditDesc
+	modeDetailReschedule
+	modeDetailMove
+	modeDetailConfirmDelete
 )
 
 type model struct {
@@ -79,6 +84,7 @@ type model struct {
 	refreshGen    int
 	status        string
 	input         string
+	detailField   string
 	mode          inputMode
 	searchQuery   string
 	width         int
@@ -88,8 +94,9 @@ type model struct {
 type tickMsg struct{ gen int }
 
 type dataMsg struct {
-	projects []project
-	tasks    []task
+	projects      []project
+	tasks         []task
+	projectCursor int // cursor value at time of fetch; -1 means ignore check
 }
 type statusMsg string
 type errMsg string
@@ -104,27 +111,27 @@ func fetchInitialData() tea.Cmd {
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		return dataMsg{projects: projects, tasks: tasks}
+		return dataMsg{projects: projects, tasks: tasks, projectCursor: 0}
 	}
 }
 
-func fetchTodayTasks() tea.Cmd {
+func fetchTodayTasks(cursor int) tea.Cmd {
 	return func() tea.Msg {
 		tasks, err := api.GetTodayTasks()
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		return dataMsg{tasks: tasks}
+		return dataMsg{tasks: tasks, projectCursor: cursor}
 	}
 }
 
-func fetchProjectTasks(projectID string) tea.Cmd {
+func fetchProjectTasks(projectID string, cursor int) tea.Cmd {
 	return func() tea.Msg {
 		tasks, err := api.GetTasksByProject(projectID)
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		return dataMsg{tasks: tasks}
+		return dataMsg{tasks: tasks, projectCursor: cursor}
 	}
 }
 
@@ -143,7 +150,7 @@ func searchTasks(query string) tea.Cmd {
 		if err != nil {
 			return errMsg(fmt.Sprintf("Error: %v", err))
 		}
-		return dataMsg{tasks: tasks}
+		return dataMsg{tasks: tasks, projectCursor: -1}
 	}
 }
 
@@ -171,6 +178,15 @@ func rescheduleTask(id, content, dueString string) tea.Cmd {
 			return errMsg(fmt.Sprintf("Error rescheduling: %v", err))
 		}
 		return statusMsg(fmt.Sprintf("Rescheduled: %s", content))
+	}
+}
+
+func updateTask(id, content string, fields map[string]string) tea.Cmd {
+	return func() tea.Msg {
+		if err := api.UpdateTask(id, fields); err != nil {
+			return errMsg(fmt.Sprintf("Error updating: %v", err))
+		}
+		return statusMsg(fmt.Sprintf("Updated: %s", content))
 	}
 }
 
@@ -202,6 +218,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.projects != nil {
 			m.projects = msg.projects
 		}
+		if msg.projectCursor != -1 && msg.projectCursor != m.projectCursor {
+			return m, nil // stale result, discard
+		}
 		m.tasks = msg.tasks
 		if n := len(msg.tasks); m.taskCursor >= n {
 			m.taskCursor = max(0, n-1)
@@ -222,11 +241,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = string(msg)
 
 	case tea.KeyMsg:
-		if m.mode == modeDetail {
-			if msg.String() == "esc" || msg.String() == "ctrl+c" || msg.String() == "q" || msg.String() == "enter" {
-				m.mode = modeNormal
-			}
-			return m, nil
+		if m.mode == modeDetail ||
+			m.mode == modeDetailEditContent ||
+			m.mode == modeDetailEditDesc ||
+			m.mode == modeDetailReschedule ||
+			m.mode == modeDetailMove ||
+			m.mode == modeDetailConfirmDelete {
+			return m.handleDetail(msg)
 		}
 		if m.mode == modeConfirmDelete {
 			switch msg.String() {
@@ -283,11 +304,11 @@ func (m model) selectedTasks() []task {
 func (m model) refreshTasks() tea.Cmd {
 	var fetch tea.Cmd
 	if m.projectCursor == 0 {
-		fetch = fetchTodayTasks()
+		fetch = fetchTodayTasks(0)
 	} else if m.projectCursor-1 < len(m.projects) {
-		fetch = fetchProjectTasks(m.projects[m.projectCursor-1].ID)
+		fetch = fetchProjectTasks(m.projects[m.projectCursor-1].ID, m.projectCursor)
 	} else {
-		fetch = fetchTodayTasks()
+		fetch = fetchTodayTasks(0)
 	}
 	if m.cfg.AutoRefresh && m.cfg.RefreshInterval > 0 {
 		gen := m.refreshGen
@@ -543,6 +564,98 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	t := m.tasks[m.taskCursor]
+
+	// Text-input sub-modes
+	if m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
+		m.mode == modeDetailReschedule || m.mode == modeDetailMove {
+		switch msg.String() {
+		case "esc":
+			m.mode = modeDetail
+			m.detailField = ""
+		case "enter":
+			text := strings.TrimSpace(m.detailField)
+			origMode := m.mode
+			m.mode = modeDetail
+			m.detailField = ""
+			switch origMode {
+			case modeDetailEditContent:
+				if text != "" {
+					return m, updateTask(t.ID, t.Content, map[string]string{"content": text})
+				}
+			case modeDetailEditDesc:
+				return m, updateTask(t.ID, t.Content, map[string]string{"description": text})
+			case modeDetailReschedule:
+				if text != "" {
+					return m, rescheduleTask(t.ID, t.Content, text)
+				}
+			case modeDetailMove:
+				lower := strings.ToLower(text)
+				for _, p := range m.projects {
+					if strings.ToLower(p.Name) == lower {
+						return m, moveTask(t.ID, t.Content, p.ID)
+					}
+				}
+			}
+		case "tab":
+			if m.mode == modeDetailMove {
+				lower := strings.ToLower(m.detailField)
+				for _, p := range m.projects {
+					if strings.HasPrefix(strings.ToLower(p.Name), lower) {
+						m.detailField = p.Name
+						break
+					}
+				}
+			}
+		case "backspace":
+			if len(m.detailField) > 0 {
+				m.detailField = m.detailField[:len(m.detailField)-1]
+			}
+		default:
+			if len(msg.String()) == 1 || msg.String() == " " {
+				m.detailField += msg.String()
+			}
+		}
+		return m, nil
+	}
+
+	if m.mode == modeDetailConfirmDelete {
+		switch msg.String() {
+		case "y", "Y":
+			m.mode = modeNormal
+			return m, deleteTask(t.ID, t.Content)
+		default:
+			m.mode = modeDetail
+		}
+		return m, nil
+	}
+
+	// modeDetail — action key dispatch
+	switch msg.String() {
+	case "esc", "q":
+		m.mode = modeNormal
+	case "e":
+		m.mode = modeDetailEditContent
+		m.detailField = t.Content
+	case "E":
+		m.mode = modeDetailEditDesc
+		m.detailField = t.Description
+	case "s":
+		m.mode = modeDetailReschedule
+		m.detailField = ""
+	case "x":
+		m.mode = modeNormal
+		return m, closeTask(t.ID, t.Content)
+	case "d":
+		m.mode = modeDetailConfirmDelete
+	case "alt+m":
+		m.mode = modeDetailMove
+		m.detailField = ""
+	}
+	return m, nil
+}
+
 func (m model) viewDetail() string {
 	t := m.tasks[m.taskCursor]
 
@@ -604,13 +717,39 @@ func (m model) viewDetail() string {
 	b.WriteString(field("Added", t.AddedAt))
 	b.WriteString(field("Updated", t.UpdatedAt))
 
-	b.WriteString("\n" + helpStyle.Render("esc / enter: back"))
+	b.WriteString("\n")
+	switch m.mode {
+	case modeDetailEditContent:
+		b.WriteString(titleStyle.Render("  Edit content: ") + m.detailField + "█\n")
+	case modeDetailEditDesc:
+		b.WriteString(titleStyle.Render("  Edit description: ") + m.detailField + "█\n")
+	case modeDetailReschedule:
+		b.WriteString(titleStyle.Render("  Reschedule to: ") + m.detailField + "█\n")
+	case modeDetailMove:
+		ghost := ""
+		lower := strings.ToLower(m.detailField)
+		if lower != "" {
+			for _, p := range m.projects {
+				if strings.HasPrefix(strings.ToLower(p.Name), lower) {
+					ghost = dimStyle.Render(p.Name[len(m.detailField):])
+					break
+				}
+			}
+		}
+		b.WriteString(titleStyle.Render("  Move to project: ") + m.detailField + ghost + "█\n")
+	case modeDetailConfirmDelete:
+		b.WriteString(errorStyle.Render("  Delete this task? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
+	default:
+		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  s:reschedule  x:complete  d:delete  alt+m:move  q/esc:back") + "\n")
+	}
 
 	return style.Render(b.String())
 }
 
 func (m model) View() string {
-	if m.mode == modeDetail && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+	if (m.mode == modeDetail || m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
+		m.mode == modeDetailReschedule || m.mode == modeDetailMove || m.mode == modeDetailConfirmDelete) &&
+		len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		return m.viewDetail()
 	}
 	sidebarWidth := 24

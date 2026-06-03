@@ -166,3 +166,8 @@ func (c *TodoistClient) CreateTask(text string) error {
 	_, err := c.do("POST", "/tasks/quick", body)
 	return err
 }
+
+func (c *TodoistClient) UpdateTask(taskID string, fields map[string]string) error {
+	_, err := c.do("POST", "/tasks/"+taskID, fields)
+	return err
+}
