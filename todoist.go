@@ -161,10 +161,17 @@ func (c *TodoistClient) RescheduleTask(taskID, dueString string) error {
 	return err
 }
 
-func (c *TodoistClient) CreateTask(text string) error {
+func (c *TodoistClient) CreateTask(text string) (*task, error) {
 	body := map[string]string{"text": text}
-	_, err := c.do("POST", "/tasks/quick", body)
-	return err
+	data, err := c.do("POST", "/tasks/quick", body)
+	if err != nil {
+		return nil, err
+	}
+	var t task
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 func (c *TodoistClient) UpdateTask(taskID string, fields map[string]string) error {

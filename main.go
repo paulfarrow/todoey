@@ -192,7 +192,7 @@ func updateTask(id, content string, fields map[string]string) tea.Cmd {
 
 func createTask(content string) tea.Cmd {
 	return func() tea.Msg {
-		if err := api.CreateTask(content); err != nil {
+		if _, err := api.CreateTask(content); err != nil {
 			return errMsg(fmt.Sprintf("Error adding: %v", err))
 		}
 		return statusMsg(fmt.Sprintf("Added: %s", content))
@@ -889,11 +889,23 @@ func main() {
 	flag.Parse()
 
 	if *addTask != "" {
-		if err := api.CreateTask(*addTask); err != nil {
+		t, err := api.CreateTask(*addTask)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Added: %s\n", *addTask)
+		line := "Task added: " + t.Content
+		if t.Due != nil && t.Due.Date != "" {
+			line += " (" + t.Due.Date + ")"
+		}
+		projects, _ := api.GetProjects()
+		for _, p := range projects {
+			if p.ID == t.ProjectID {
+				line += " #" + p.Name
+				break
+			}
+		}
+		fmt.Println(line)
 		return
 	}
 
