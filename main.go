@@ -71,6 +71,7 @@ const (
 	modeDetailReschedule
 	modeDetailMove
 	modeDetailConfirmDelete
+	modeAddDesc
 )
 
 type model struct {
@@ -420,12 +421,23 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case modeAdd:
 			if text != "" {
-				return m, createTask(text)
+				m.mode = modeAddDesc
+				m.detailField = text
+				m.input = ""
+				return m, nil
 			}
+		case modeAddDesc:
+			content := m.detailField
+			m.detailField = ""
+			if text != "" {
+				content += " // " + text
+			}
+			return m, createTask(content)
 		}
 	case "esc", "ctrl+c":
 		m.mode = modeNormal
 		m.input = ""
+		m.detailField = ""
 	case "backspace":
 		if len(m.input) > 0 {
 			m.input = m.input[:len(m.input)-1]
@@ -820,6 +832,9 @@ func (m model) View() string {
 			ghost = dimStyle.Render(c[len(fragment):])
 		}
 		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input + ghost + "█\n")
+	} else if m.mode == modeAddDesc {
+		main.WriteString("\n" + dimStyle.Render("  Task: "+m.detailField) + "\n")
+		main.WriteString(titleStyle.Render("  Description (enter to skip): ") + m.input + "█\n")
 	} else if m.mode == modeSearch {
 		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input + "█\n")
 	} else if m.mode == modeGoto {
