@@ -888,7 +888,7 @@ func (m model) viewDetail() string {
 		b.WriteString(labelStyle.Render("⚑ Priority") + "  " + colored + "\n")
 	}
 	if proj := m.projectTag(t.ProjectID); proj != "" {
-		b.WriteString(labelStyle.Render("Project: ") + "  " + proj + "\n")
+		b.WriteString(labelStyle.Render("Project:") + "  " + proj + "\n")
 	}
 	if len(t.Labels) > 0 {
 		labels := ""
