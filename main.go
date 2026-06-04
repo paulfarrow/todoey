@@ -1004,7 +1004,8 @@ func (m model) View() string {
 	}
 	sidebarWidth := 24
 	var sidebar strings.Builder
-	sidebar.WriteString(titleStyle.Render("◆ Projects") + "\n\n")
+	sidebar.WriteString("\n" + titleStyle.Render("Projects") + "\n")
+	sidebar.WriteString(dimStyle.Render(strings.Repeat("─", sidebarWidth-2)) + "\n")
 
 	itemWidth := sidebarWidth - 2
 	renderItem := func(label string, selected bool) string {
@@ -1024,12 +1025,19 @@ func (m model) View() string {
 	}
 
 	var main strings.Builder
+	mainWidth := m.width - sidebarWidth - 6
+	if mainWidth < 20 {
+		mainWidth = 60
+	}
 	if m.searchQuery != "" {
-		main.WriteString(titleStyle.Render("◆ Search: "+m.searchQuery) + "  " + dimStyle.Render("(esc to return, J/K to browse projects)") + "\n\n")
+		main.WriteString("\n" + titleStyle.Render("Search: "+m.searchQuery) + "  " + dimStyle.Render("(esc to return, J/K to browse projects)") + "\n")
+		main.WriteString(dimStyle.Render(strings.Repeat("─", mainWidth)) + "\n")
 	} else if m.projectCursor == 0 {
-		main.WriteString(titleStyle.Render("◆ Today") + "\n\n")
+		main.WriteString("\n" + titleStyle.Render("Today") + "\n")
+		main.WriteString(dimStyle.Render(strings.Repeat("─", mainWidth)) + "\n")
 	} else if m.projectCursor-1 < len(m.projects) {
-		main.WriteString(titleStyle.Render("◆ "+m.projects[m.projectCursor-1].Name) + "\n\n")
+		main.WriteString("\n" + titleStyle.Render(m.projects[m.projectCursor-1].Name) + "\n")
+		main.WriteString(dimStyle.Render(strings.Repeat("─", mainWidth)) + "\n")
 	}
 	if len(m.tasks) == 0 {
 		main.WriteString(dimStyle.Render("  No tasks") + "\n")
