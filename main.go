@@ -837,58 +837,66 @@ func (m model) viewDetail() string {
 		w = 80
 	}
 
-	style := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("52")).
-		Padding(1, 2).
-		Width(w - 4)
+	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("69"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	dividerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("195")).Italic(true)
 
-	field := func(label, value string) string {
+	divider := dividerStyle.Render(strings.Repeat("─", w-8)) + "\n"
+
+	row := func(icon, label, value string) string {
 		if value == "" {
 			return ""
 		}
-		return dimStyle.Render(label+": ") + normalStyle.Render(value) + "\n"
+		return labelStyle.Render(icon+" "+label) + "  " + valueStyle.Render(value) + "\n"
 	}
 
-	priorities := map[int]string{4: "p1 (urgent)", 3: "p2 (high)", 2: "p3 (medium)", 1: "p4 (normal)"}
+	priorities := map[int]string{4: "● Urgent", 3: "● High", 2: "● Medium", 1: "● Normal"}
+	priorityColors := map[int]string{4: "203", 3: "215", 2: "220", 1: "245"}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("◆ "+t.Content) + "\n\n")
 
+	// Title
+	b.WriteString(titleStyle.Render(t.Content) + "\n")
+	b.WriteString(divider)
+
+	// Description
 	if t.Description != "" {
-		b.WriteString(normalStyle.Render(t.Description) + "\n\n")
+		b.WriteString(descStyle.Render(t.Description) + "\n")
+		b.WriteString(divider)
 	}
 
-	if t.Due != nil {
+	// Metadata rows
+	if t.Due != nil && t.Due.Date != "" {
 		s := t.Due.Date
 		if t.Due.String != "" {
 			s = t.Due.String + " (" + t.Due.Date + ")"
 		}
 		if t.Due.IsRecurring {
-			s += " 🔁"
+			s += "  🔁"
 		}
-		b.WriteString(field("Due", s))
+		b.WriteString(row("📅", "Due", s))
 	}
 	if t.Deadline != nil && t.Deadline.Date != "" {
-		b.WriteString(field("Deadline", t.Deadline.Date))
+		b.WriteString(row("⏳", "Deadline", t.Deadline.Date))
 	}
 	if t.Duration != nil {
-		b.WriteString(field("Duration", fmt.Sprintf("%d %s", t.Duration.Amount, t.Duration.Unit)))
+		b.WriteString(row("⏱", "Duration", fmt.Sprintf("%d %s", t.Duration.Amount, t.Duration.Unit)))
 	}
-	b.WriteString(field("Priority", priorities[t.Priority]))
-	b.WriteString(field("Project", m.projectTag(t.ProjectID)))
+	if p, ok := priorities[t.Priority]; ok && t.Priority > 1 {
+		colored := lipgloss.NewStyle().Foreground(lipgloss.Color(priorityColors[t.Priority])).Render(p)
+		b.WriteString(labelStyle.Render("⚑ Priority") + "  " + colored + "\n")
+	}
+	if proj := m.projectTag(t.ProjectID); proj != "" {
+		b.WriteString(labelStyle.Render("Project: ") + "  " + proj + "\n")
+	}
 	if len(t.Labels) > 0 {
-		b.WriteString(field("Labels", strings.Join(t.Labels, ", ")))
+		labels := ""
+		for _, l := range t.Labels {
+			labels += dimStyle.Render("@") + valueStyle.Render(l) + "  "
+		}
+		b.WriteString(labelStyle.Render("🏷 Labels") + "  " + strings.TrimSpace(labels) + "\n")
 	}
-	if t.SectionID != "" {
-		b.WriteString(field("Section ID", t.SectionID))
-	}
-	if t.ParentID != "" {
-		b.WriteString(field("Parent ID", t.ParentID))
-	}
-	b.WriteString(field("ID", t.ID))
-	b.WriteString(field("Added", t.AddedAt))
-	b.WriteString(field("Updated", t.UpdatedAt))
 
 	b.WriteString("\n")
 	switch m.mode {
@@ -916,7 +924,12 @@ func (m model) viewDetail() string {
 		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  r:reschedule  x:complete  d:delete  alt+m:move  q/esc:back") + "\n")
 	}
 
-	return style.Render(b.String())
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("52")).
+		Padding(1, 3).
+		Width(w - 4).
+		Render(b.String())
 }
 
 func (m model) View() string {
