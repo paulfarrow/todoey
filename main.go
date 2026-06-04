@@ -54,6 +54,156 @@ func (m model) projectTag(projectID string) string {
 	return ""
 }
 
+// textInput is a cursor-aware single-line input field.
+type textInput struct {
+	buf string
+	pos int // byte position of cursor
+}
+
+func (t *textInput) set(s string) { t.buf = s; t.pos = len(s) }
+func (t *textInput) clear()       { t.buf = ""; t.pos = 0 }
+func (t *textInput) val() string  { return t.buf }
+
+// insert inserts s at current cursor position.
+func (t *textInput) insert(s string) {
+	t.buf = t.buf[:t.pos] + s + t.buf[t.pos:]
+	t.pos += len(s)
+}
+
+// backspace deletes the rune before the cursor.
+func (t *textInput) backspace() {
+	if t.pos == 0 {
+		return
+	}
+	_, sz := lastRune(t.buf[:t.pos])
+	t.buf = t.buf[:t.pos-sz] + t.buf[t.pos:]
+	t.pos -= sz
+}
+
+// deleteForward deletes the rune after the cursor.
+func (t *textInput) deleteForward() {
+	if t.pos >= len(t.buf) {
+		return
+	}
+	_, sz := firstRune(t.buf[t.pos:])
+	t.buf = t.buf[:t.pos] + t.buf[t.pos+sz:]
+}
+
+func (t *textInput) moveLeft()  { _, sz := lastRune(t.buf[:t.pos]); t.pos -= sz }
+func (t *textInput) moveRight() { _, sz := firstRune(t.buf[t.pos:]); t.pos += sz }
+func (t *textInput) moveHome()  { t.pos = 0 }
+func (t *textInput) moveEnd()   { t.pos = len(t.buf) }
+
+func (t *textInput) wordLeft() {
+	p := t.pos
+	for p > 0 {
+		_, sz := lastRune(t.buf[:p])
+		if t.buf[p-sz] == ' ' && p != t.pos {
+			break
+		}
+		p -= sz
+		if t.buf[p] == ' ' {
+			continue
+		}
+	}
+	t.pos = p
+}
+
+func (t *textInput) wordRight() {
+	p := t.pos
+	n := len(t.buf)
+	// skip current word
+	for p < n && t.buf[p] != ' ' {
+		_, sz := firstRune(t.buf[p:])
+		p += sz
+	}
+	// skip spaces
+	for p < n && t.buf[p] == ' ' {
+		_, sz := firstRune(t.buf[p:])
+		p += sz
+	}
+	t.pos = p
+}
+
+// view renders the field content with a block cursor injected at pos.
+func (t *textInput) view() string {
+	before := t.buf[:t.pos]
+	after := t.buf[t.pos:]
+	var cursorChar string
+	if after == "" {
+		cursorChar = "█"
+		after = ""
+	} else {
+		_, sz := firstRune(after)
+		cursorChar = "\x1b[7m" + after[:sz] + "\x1b[0m" // reverse-video for mid-string cursor
+		after = after[sz:]
+	}
+	return before + cursorChar + after
+}
+
+// handle processes a KeyMsg for text input; returns true if the key was consumed.
+func (t *textInput) handle(msg tea.KeyMsg) bool {
+	switch msg.String() {
+	case "left":
+		if t.pos > 0 {
+			t.moveLeft()
+		}
+	case "right":
+		if t.pos < len(t.buf) {
+			t.moveRight()
+		}
+	case "ctrl+left", "alt+left":
+		t.wordLeft()
+	case "ctrl+right", "alt+right":
+		t.wordRight()
+	case "home", "ctrl+a":
+		t.moveHome()
+	case "end", "ctrl+e":
+		t.moveEnd()
+	case "backspace":
+		t.backspace()
+	case "ctrl+backspace", "alt+backspace":
+		// delete from cursor back to start of previous word
+		prev := t.pos
+		t.wordLeft()
+		t.buf = t.buf[:t.pos] + t.buf[prev:]
+	case "ctrl+d", "delete":
+		t.deleteForward()
+	default:
+		ch := msg.String()
+		if ch == " " || (len(ch) == 1 && ch[0] >= 0x20) {
+			t.insert(ch)
+		} else {
+			return false
+		}
+	}
+	return true
+}
+
+func lastRune(s string) (rune, int) {
+	if s == "" {
+		return 0, 0
+	}
+	r, sz := rune(s[len(s)-1]), 1
+	_ = r
+	// walk back to find the start of the last UTF-8 sequence
+	for sz < len(s) && s[len(s)-sz]&0xC0 == 0x80 {
+		sz++
+	}
+	return rune(s[len(s)-sz]), sz
+}
+
+func firstRune(s string) (rune, int) {
+	if s == "" {
+		return 0, 0
+	}
+	for i, r := range s {
+		_ = i
+		return r, len(string(r))
+	}
+	return 0, 0
+}
+
 type inputMode int
 
 const (
@@ -84,8 +234,8 @@ type model struct {
 	visualAnchor  int
 	refreshGen    int
 	status        string
-	input         string
-	detailField   string
+	input         textInput
+	detailField   textInput
 	mode          inputMode
 	searchQuery   string
 	width         int
@@ -325,7 +475,7 @@ func (m model) refreshTasks() tea.Cmd {
 }
 
 func (m model) gotoCompletion() string {
-	lower := strings.ToLower(m.input)
+	lower := strings.ToLower(m.input.val())
 	if lower == "" {
 		return ""
 	}
@@ -341,11 +491,11 @@ func (m model) gotoCompletion() string {
 }
 
 func (m model) addTaskCompletion() string {
-	idx := strings.LastIndex(m.input, "#")
+	idx := strings.LastIndex(m.input.val(), "#")
 	if idx < 0 {
 		return ""
 	}
-	fragment := strings.ToLower(m.input[idx+1:])
+	fragment := strings.ToLower(m.input.val()[idx+1:])
 	if fragment == "" {
 		return ""
 	}
@@ -362,20 +512,20 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		if m.mode == modeGoto || m.mode == modeMoveTask {
 			if c := m.gotoCompletion(); c != "" {
-				m.input = c
+				m.input.set(c)
 			}
 		}
 		if m.mode == modeAdd {
 			if c := m.addTaskCompletion(); c != "" {
-				idx := strings.LastIndex(m.input, "#")
-				m.input = m.input[:idx+1] + c
+				idx := strings.LastIndex(m.input.val(), "#")
+				m.input.set(m.input.val()[:idx+1] + c)
 			}
 		}
 	case "enter":
-		text := strings.TrimSpace(m.input)
+		text := strings.TrimSpace(m.input.val())
 		origMode := m.mode
 		m.mode = modeNormal
-		m.input = ""
+		m.input.clear()
 		switch origMode {
 		case modeSearch:
 			if text != "" {
@@ -427,13 +577,13 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case modeAdd:
 			if text != "" {
 				m.mode = modeAddDesc
-				m.detailField = text
-				m.input = ""
+				m.detailField.set(text)
+				m.input.clear()
 				return m, nil
 			}
 		case modeAddDesc:
-			content := m.detailField
-			m.detailField = ""
+			content := m.detailField.val()
+			m.detailField.clear()
 			if text != "" {
 				content += " // " + text
 			}
@@ -441,16 +591,10 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "esc", "ctrl+c":
 		m.mode = modeNormal
-		m.input = ""
-		m.detailField = ""
-	case "backspace":
-		if len(m.input) > 0 {
-			m.input = m.input[:len(m.input)-1]
-		}
+		m.input.clear()
+		m.detailField.clear()
 	default:
-		if len(msg.String()) == 1 || msg.String() == " " {
-			m.input += msg.String()
-		}
+		m.input.handle(msg)
 	}
 	return m, nil
 }
@@ -561,22 +705,22 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "a":
 		m.mode = modeAdd
-		m.input = ""
+		m.input.clear()
 	case "/":
 		m.mode = modeSearch
-		m.input = ""
+		m.input.clear()
 	case "c":
 		m.mode = modeGoto
-		m.input = ""
+		m.input.clear()
 	case "alt+m":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeMoveTask
-			m.input = ""
+			m.input.clear()
 		}
 	case "r":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeReschedule
-			m.input = ""
+			m.input.clear()
 		}
 	case "alt+r":
 		m.searchQuery = ""
@@ -595,12 +739,12 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			m.mode = modeDetail
-			m.detailField = ""
+			m.detailField.clear()
 		case "enter":
-			text := strings.TrimSpace(m.detailField)
+			text := strings.TrimSpace(m.detailField.val())
 			origMode := m.mode
 			m.mode = modeDetail
-			m.detailField = ""
+			m.detailField.clear()
 			switch origMode {
 			case modeDetailEditContent:
 				if text != "" {
@@ -622,22 +766,16 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "tab":
 			if m.mode == modeDetailMove {
-				lower := strings.ToLower(m.detailField)
+				lower := strings.ToLower(m.detailField.val())
 				for _, p := range m.projects {
 					if strings.HasPrefix(strings.ToLower(p.Name), lower) {
-						m.detailField = p.Name
+						m.detailField.set(p.Name)
 						break
 					}
 				}
 			}
-		case "backspace":
-			if len(m.detailField) > 0 {
-				m.detailField = m.detailField[:len(m.detailField)-1]
-			}
 		default:
-			if len(msg.String()) == 1 || msg.String() == " " {
-				m.detailField += msg.String()
-			}
+			m.detailField.handle(msg)
 		}
 		return m, nil
 	}
@@ -659,13 +797,13 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeNormal
 	case "e":
 		m.mode = modeDetailEditContent
-		m.detailField = t.Content
+		m.detailField.set(t.Content)
 	case "E":
 		m.mode = modeDetailEditDesc
-		m.detailField = t.Description
+		m.detailField.set(t.Description)
 	case "r":
 		m.mode = modeDetailReschedule
-		m.detailField = ""
+		m.detailField.clear()
 	case "x":
 		m.mode = modeNormal
 		return m, closeTask(t.ID, t.Content)
@@ -673,7 +811,7 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeDetailConfirmDelete
 	case "alt+m":
 		m.mode = modeDetailMove
-		m.detailField = ""
+		m.detailField.clear()
 	}
 	return m, nil
 }
@@ -742,23 +880,23 @@ func (m model) viewDetail() string {
 	b.WriteString("\n")
 	switch m.mode {
 	case modeDetailEditContent:
-		b.WriteString(titleStyle.Render("  Edit content: ") + m.detailField + "█\n")
+		b.WriteString(titleStyle.Render("  Edit content: ") + m.detailField.view() + "\n")
 	case modeDetailEditDesc:
-		b.WriteString(titleStyle.Render("  Edit description: ") + m.detailField + "█\n")
+		b.WriteString(titleStyle.Render("  Edit description: ") + m.detailField.view() + "\n")
 	case modeDetailReschedule:
-		b.WriteString(titleStyle.Render("  Reschedule to: ") + m.detailField + "█\n")
+		b.WriteString(titleStyle.Render("  Reschedule to: ") + m.detailField.view() + "\n")
 	case modeDetailMove:
 		ghost := ""
-		lower := strings.ToLower(m.detailField)
+		lower := strings.ToLower(m.detailField.val())
 		if lower != "" {
 			for _, p := range m.projects {
 				if strings.HasPrefix(strings.ToLower(p.Name), lower) {
-					ghost = dimStyle.Render(p.Name[len(m.detailField):])
+					ghost = dimStyle.Render(p.Name[len(m.detailField.val()):])
 					break
 				}
 			}
 		}
-		b.WriteString(titleStyle.Render("  Move to project: ") + m.detailField + ghost + "█\n")
+		b.WriteString(titleStyle.Render("  Move to project: ") + m.detailField.view() + ghost + "\n")
 	case modeDetailConfirmDelete:
 		b.WriteString(errorStyle.Render("  Delete this task? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	default:
@@ -837,22 +975,22 @@ func (m model) View() string {
 	if m.mode == modeAdd {
 		ghost := ""
 		if c := m.addTaskCompletion(); c != "" {
-			idx := strings.LastIndex(m.input, "#")
-			fragment := m.input[idx+1:]
+			idx := strings.LastIndex(m.input.val(), "#")
+			fragment := m.input.val()[idx+1:]
 			ghost = dimStyle.Render(c[len(fragment):])
 		}
-		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input + ghost + "█\n")
+		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input.view() + ghost + "\n")
 	} else if m.mode == modeAddDesc {
-		main.WriteString("\n" + dimStyle.Render("  Task: "+m.detailField) + "\n")
-		main.WriteString(titleStyle.Render("  Description (enter to skip): ") + m.input + "█\n")
+		main.WriteString("\n" + dimStyle.Render("  Task: "+m.detailField.val()) + "\n")
+		main.WriteString(titleStyle.Render("  Description (enter to skip): ") + m.input.view() + "\n")
 	} else if m.mode == modeSearch {
-		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input + "█\n")
+		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input.view() + "\n")
 	} else if m.mode == modeGoto {
 		ghost := ""
-		if c := m.gotoCompletion(); c != "" && c != m.input {
-			ghost = dimStyle.Render(c[len(m.input):])
+		if c := m.gotoCompletion(); c != "" && c != m.input.val() {
+			ghost = dimStyle.Render(c[len(m.input.val()):])
 		}
-		main.WriteString("\n" + titleStyle.Render("  Go to project: ") + m.input + ghost + "█\n")
+		main.WriteString("\n" + titleStyle.Render("  Go to project: ") + m.input.view() + ghost + "\n")
 	} else if m.mode == modeConfirmDelete && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		var deletePrompt string
 		if len(m.selected) > 1 {
@@ -863,12 +1001,12 @@ func (m model) View() string {
 		main.WriteString("\n" + errorStyle.Render(deletePrompt) + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	} else if m.mode == modeMoveTask && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		ghost := ""
-		if c := m.gotoCompletion(); c != "" && c != m.input {
-			ghost = dimStyle.Render(c[len(m.input):])
+		if c := m.gotoCompletion(); c != "" && c != m.input.val() {
+			ghost = dimStyle.Render(c[len(m.input.val()):])
 		}
-		main.WriteString("\n" + titleStyle.Render("  Move to project: ") + m.input + ghost + "█\n")
+		main.WriteString("\n" + titleStyle.Render("  Move to project: ") + m.input.view() + ghost + "\n")
 	} else if m.mode == modeReschedule && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-		main.WriteString("\n" + titleStyle.Render("  Reschedule to: ") + m.input + "█\n")
+		main.WriteString("\n" + titleStyle.Render("  Reschedule to: ") + m.input.view() + "\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
