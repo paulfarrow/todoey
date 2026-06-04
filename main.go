@@ -787,7 +787,7 @@ func (m model) View() string {
 
 	var main strings.Builder
 	if m.searchQuery != "" {
-		main.WriteString(titleStyle.Render("◆ Search: "+m.searchQuery) + "  " + dimStyle.Render("(r to clear, J/K to browse projects)") + "\n\n")
+		main.WriteString(titleStyle.Render("◆ Search: "+m.searchQuery) + "  " + dimStyle.Render("(alt+r to clear, J/K to browse projects)") + "\n\n")
 	} else if m.projectCursor == 0 {
 		main.WriteString(titleStyle.Render("◆ Today") + "\n\n")
 	} else if m.projectCursor-1 < len(m.projects) {
