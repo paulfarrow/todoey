@@ -1030,7 +1030,7 @@ func (m model) View() string {
 		mainWidth = 60
 	}
 	if m.searchQuery != "" {
-		main.WriteString("\n" + titleStyle.Render("Search: "+m.searchQuery) + "  " + dimStyle.Render("(esc to return, J/K to browse projects)") + "\n")
+		main.WriteString("\n" + titleStyle.Render("Search: "+m.searchQuery) + "  " + dimStyle.Render("(q or esc to return, J/K to browse projects)") + "\n")
 		main.WriteString(dimStyle.Render(strings.Repeat("─", mainWidth)) + "\n")
 	} else if m.projectCursor == 0 {
 		main.WriteString("\n" + titleStyle.Render("Today") + "\n")
@@ -1144,7 +1144,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  V:visual  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  V:visual  q/esc:back/quit"),
 	)
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
