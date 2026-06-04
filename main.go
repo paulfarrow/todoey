@@ -303,6 +303,11 @@ func (m model) selectedTasks() []task {
 }
 
 func (m model) refreshTasks() tea.Cmd {
+	if m.cfg.AutoRefresh && m.cfg.RefreshInterval > 0 && m.searchQuery != "" {
+		// Search is active: reschedule the tick but don't overwrite search results.
+		gen := m.refreshGen
+		return tea.Tick(time.Duration(m.cfg.RefreshInterval)*time.Second, func(time.Time) tea.Msg { return tickMsg{gen} })
+	}
 	var fetch tea.Cmd
 	if m.projectCursor == 0 {
 		fetch = fetchTodayTasks(0)
