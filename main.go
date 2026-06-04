@@ -223,6 +223,7 @@ const (
 	modeDetailMove
 	modeDetailConfirmDelete
 	modeAddDesc
+	modeConfirmQuit
 )
 
 type model struct {
@@ -438,6 +439,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.mode == modeConfirmQuit {
+			switch msg.String() {
+			case "y", "Y":
+				return m, tea.Quit
+			default:
+				m.mode = modeNormal
+			}
+			return m, nil
+		}
 		if m.mode != modeNormal && m.mode != modeVisual {
 			return m.handleInput(msg)
 		}
@@ -637,7 +647,8 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		// Only quit if on the plain main view with no active filter/search/selection
 		if !m.filterOverdue && m.searchQuery == "" && m.mode == modeNormal && len(m.selected) == 0 {
-			return m, tea.Quit
+			m.mode = modeConfirmQuit
+			return m, nil
 		}
 		// Otherwise treat as esc
 		return m.handleNormal(tea.KeyMsg{Type: tea.KeyEsc})
@@ -1066,6 +1077,12 @@ func (m model) View() string {
 		main.WriteString(line + "\n")
 	}
 
+	promptBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
+		MarginTop(1)
+
 	if m.mode == modeAdd {
 		ghost := ""
 		if c := m.addTaskCompletion(); c != "" {
@@ -1073,34 +1090,35 @@ func (m model) View() string {
 			fragment := m.input.val()[idx+1:]
 			ghost = dimStyle.Render(c[len(fragment):])
 		}
-		main.WriteString("\n" + titleStyle.Render("  New task: ") + m.input.view() + ghost + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("New task: ") + m.input.view() + ghost) + "\n")
 	} else if m.mode == modeAddDesc {
-		main.WriteString("\n" + dimStyle.Render("  Task: "+m.detailField.val()) + "\n")
-		main.WriteString(titleStyle.Render("  Description (enter to skip): ") + m.input.view() + "\n")
+		main.WriteString(promptBox.Render(dimStyle.Render("Task: "+m.detailField.val()) + "\n" + titleStyle.Render("Description (enter to skip): ") + m.input.view()) + "\n")
 	} else if m.mode == modeSearch {
-		main.WriteString("\n" + titleStyle.Render("  Search: ") + m.input.view() + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Search: ") + m.input.view()) + "\n")
 	} else if m.mode == modeGoto {
 		ghost := ""
 		if c := m.gotoCompletion(); c != "" && c != m.input.val() {
 			ghost = dimStyle.Render(c[len(m.input.val()):])
 		}
-		main.WriteString("\n" + titleStyle.Render("  Go to project: ") + m.input.view() + ghost + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Go to project: ") + m.input.view() + ghost) + "\n")
 	} else if m.mode == modeConfirmDelete && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		var deletePrompt string
 		if len(m.selected) > 1 {
-			deletePrompt = fmt.Sprintf("  Delete %d tasks? ", len(m.selected))
+			deletePrompt = fmt.Sprintf("Delete %d tasks? ", len(m.selected))
 		} else {
-			deletePrompt = "  Delete \"" + m.tasks[m.taskCursor].Content + "\"? "
+			deletePrompt = "Delete \"" + m.tasks[m.taskCursor].Content + "\"? "
 		}
-		main.WriteString("\n" + errorStyle.Render(deletePrompt) + normalStyle.Render("[y] yes  [any] cancel") + "\n")
+		main.WriteString(promptBox.Render(errorStyle.Render(deletePrompt) + normalStyle.Render("[y] yes  [any] cancel")) + "\n")
 	} else if m.mode == modeMoveTask && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		ghost := ""
 		if c := m.gotoCompletion(); c != "" && c != m.input.val() {
 			ghost = dimStyle.Render(c[len(m.input.val()):])
 		}
-		main.WriteString("\n" + titleStyle.Render("  Move to project: ") + m.input.view() + ghost + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Move to project: ") + m.input.view() + ghost) + "\n")
 	} else if m.mode == modeReschedule && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-		main.WriteString("\n" + titleStyle.Render("  Reschedule to: ") + m.input.view() + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Reschedule to: ") + m.input.view()) + "\n")
+	} else if m.mode == modeConfirmQuit {
+		main.WriteString(promptBox.Render(errorStyle.Render("Quit? ") + normalStyle.Render("[y] yes  [any] cancel")) + "\n")
 	}
 
 	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
