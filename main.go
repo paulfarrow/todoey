@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -372,7 +373,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.projectCursor != -1 && msg.projectCursor != m.projectCursor {
 			return m, nil // stale result, discard
 		}
-		m.tasks = msg.tasks
+		tasks := msg.tasks
+		// On the Today view, stable-sort by project so tasks are grouped.
+		if m.projectCursor == 0 {
+			// build project order from m.projects for consistent grouping
+			order := make(map[string]int, len(m.projects))
+			for i, p := range m.projects {
+				order[p.ID] = i
+			}
+			slices.SortStableFunc(tasks, func(a, b task) int {
+				return order[a.ProjectID] - order[b.ProjectID]
+			})
+		}
+		m.tasks = tasks
 		if n := len(msg.tasks); m.taskCursor >= n {
 			m.taskCursor = max(0, n-1)
 		}
@@ -945,16 +958,28 @@ func (m model) View() string {
 		main.WriteString(dimStyle.Render("  No tasks") + "\n")
 	}
 	today := time.Now().Format("2006-01-02")
+	lastProjectID := ""
 	for i, t := range m.tasks {
+		if m.projectCursor == 0 && t.ProjectID != lastProjectID {
+			lastProjectID = t.ProjectID
+			header := m.projectTag(t.ProjectID)
+			if header == "" {
+				header = dimStyle.Render("(no project)")
+			}
+			main.WriteString("\n" + header + "\n")
+		}
 		due := dueStr(t)
 		overdue := t.Due != nil && t.Due.Date != "" && t.Due.Date < today
 		dueRendered := dimStyle.Render(due)
 		if overdue {
 			dueRendered = errorStyle.Render(due)
 		}
-		tag := m.projectTag(t.ProjectID)
-		if tag != "" {
-			tag = " " + tag
+		tag := ""
+		if m.projectCursor != 0 {
+			tag = m.projectTag(t.ProjectID)
+			if tag != "" {
+				tag = " " + tag
+			}
 		}
 		isCursor := i == m.taskCursor
 		isMarked := m.selected[i]
