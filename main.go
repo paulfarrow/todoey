@@ -229,6 +229,7 @@ type model struct {
 	cfg           config
 	projects      []project
 	tasks         []task
+	allTasks      []task // unfiltered tasks, set when filterOverdue is active
 	projectCursor int
 	taskCursor    int
 	selected      map[int]bool
@@ -238,9 +239,10 @@ type model struct {
 	input         textInput
 	detailField   textInput
 	mode          inputMode
-	searchQuery   string
-	width         int
-	height        int
+	searchQuery    string
+	filterOverdue  bool
+	width          int
+	height         int
 }
 
 type tickMsg struct{ gen int }
@@ -386,11 +388,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 		m.tasks = tasks
-		if n := len(msg.tasks); m.taskCursor >= n {
+		// If overdue filter is active, store full set and apply filter.
+		if m.filterOverdue {
+			m.allTasks = tasks
+			m.tasks = m.overdueOnly(tasks)
+		} else {
+			m.allTasks = nil
+		}
+		if n := len(m.tasks); m.taskCursor >= n {
 			m.taskCursor = max(0, n-1)
 		}
 		m.selected = nil
-		m.status = fmt.Sprintf("%d tasks", len(msg.tasks))
+		m.status = fmt.Sprintf("%d tasks", len(m.tasks))
 
 	case statusMsg:
 		m.status = string(msg)
@@ -459,6 +468,17 @@ func (m model) selectedTasks() []task {
 	var out []task
 	for i, t := range m.tasks {
 		if m.selected[i] {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (m model) overdueOnly(tasks []task) []task {
+	today := time.Now().Format("2006-01-02")
+	var out []task
+	for _, t := range tasks {
+		if t.Due != nil && t.Due.Date != "" && t.Due.Date < today {
 			out = append(out, t)
 		}
 	}
@@ -667,6 +687,24 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = "Loading..."
 		m.refreshGen++; return m, m.refreshTasks()
 
+	case "O":
+		if m.filterOverdue {
+			// Turn off: restore full list
+			m.filterOverdue = false
+			if m.allTasks != nil {
+				m.tasks = m.allTasks
+				m.allTasks = nil
+			}
+		} else {
+			// Turn on: save full list, show only overdue
+			m.filterOverdue = true
+			m.allTasks = m.tasks
+			m.tasks = m.overdueOnly(m.allTasks)
+		}
+		m.taskCursor = 0
+		m.selected = nil
+		m.mode = modeNormal
+
 	case "g":
 		m.taskCursor = 0
 	case "G":
@@ -688,6 +726,16 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "esc", "ctrl+c":
+		if m.filterOverdue {
+			m.filterOverdue = false
+			if m.allTasks != nil {
+				m.tasks = m.allTasks
+				m.allTasks = nil
+			}
+			m.taskCursor = 0
+			m.selected = nil
+			return m, nil
+		}
 		if m.searchQuery != "" {
 			m.searchQuery = ""
 			m.status = "Loading..."
@@ -970,6 +1018,9 @@ func (m model) View() string {
 	if len(m.tasks) == 0 {
 		main.WriteString(dimStyle.Render("  No tasks") + "\n")
 	}
+	if m.filterOverdue {
+		main.WriteString(errorStyle.Render("  ⚠ Overdue only") + "  " + dimStyle.Render("(esc to clear)") + "\n\n")
+	}
 	today := time.Now().Format("2006-01-02")
 	lastProjectID := ""
 	for i, t := range m.tasks {
@@ -1062,7 +1113,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  alt+r:refresh  g/G:top/bottom  V:visual  q:quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  V:visual  q:quit"),
 	)
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
