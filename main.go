@@ -635,7 +635,12 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
-		return m, tea.Quit
+		// Only quit if on the plain main view with no active filter/search/selection
+		if !m.filterOverdue && m.searchQuery == "" && m.mode == modeNormal && len(m.selected) == 0 {
+			return m, tea.Quit
+		}
+		// Otherwise treat as esc
+		return m.handleNormal(tea.KeyMsg{Type: tea.KeyEsc})
 
 	case "V":
 		if len(m.tasks) > 0 {
