@@ -1167,7 +1167,7 @@ func main() {
 	addTask := flag.String("a", "", "")
 	flag.StringVar(addTask, "add-task", "", "Add a task and exit")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: todoist-tui [-a, --add-task \"task text\"]\n")
+		fmt.Fprintf(os.Stderr, "Usage: todoist [-a, --add-task \"task text\"]\n")
 	}
 	flag.Parse()
 
