@@ -46,5 +46,5 @@ func configPath() string {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "todoist-tui", "config.json")
+	return filepath.Join(base, "todoey", "config.json")
 }

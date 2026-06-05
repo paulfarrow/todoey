@@ -1,4 +1,4 @@
-module todoist-tui
+module todoey
 
 go 1.26.2
 
