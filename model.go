@@ -311,6 +311,7 @@ func (m model) taskTotalLines() int {
 
 // taskCursorLine returns the line index (0-based) of the current taskCursor
 // within the full task line list (accounting for project headers).
+// Also returns the line index where the task's group header starts (or same as task line if no header).
 func (m model) taskCursorLine() int {
 	line := 0
 	lastPID := ""
@@ -320,6 +321,30 @@ func (m model) taskCursorLine() int {
 			line += 2 // blank line + header
 		}
 		if i == m.taskCursor {
+			return line
+		}
+		line++
+	}
+	return line
+}
+
+// taskCursorLineWithHeader returns the line where the cursor's section starts
+// (including the project header above the first task in a group).
+func (m model) taskCursorLineWithHeader() int {
+	line := 0
+	lastPID := ""
+	headerLine := 0
+	for i, t := range m.tasks {
+		if m.projectCursor == 0 && t.ProjectID != lastPID {
+			lastPID = t.ProjectID
+			headerLine = line
+			line += 2
+		}
+		if i == m.taskCursor {
+			// If this is the first task in its group, include the header
+			if i == 0 || (m.projectCursor == 0 && m.tasks[i-1].ProjectID != t.ProjectID) {
+				return headerLine
+			}
 			return line
 		}
 		line++
@@ -346,7 +371,8 @@ func (m *model) ensureTaskVisible() {
 	visible := m.taskListHeight()
 	cursorLine := m.taskCursorLine()
 	if cursorLine < m.taskScroll {
-		m.taskScroll = cursorLine
+		// Scroll up: include the group header if cursor is first in group
+		m.taskScroll = m.taskCursorLineWithHeader()
 	} else if cursorLine >= m.taskScroll+visible {
 		m.taskScroll = cursorLine - visible + 1
 	}

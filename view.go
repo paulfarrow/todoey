@@ -149,14 +149,19 @@ func (m model) View() string {
 	if projEnd > len(allItems) {
 		projEnd = len(allItems)
 	}
+	scrollable := len(allItems) > sideH
 	if m.projScroll > 0 {
 		sidebar.WriteString(dimStyle.Render("  ▲ more") + "\n")
+	} else if scrollable {
+		sidebar.WriteString("\n")
 	}
 	for i := m.projScroll; i < projEnd; i++ {
 		sidebar.WriteString(renderItem(allItems[i].label, allItems[i].selected) + "\n")
 	}
 	if projEnd < len(allItems) {
 		sidebar.WriteString(dimStyle.Render("  ▼ more") + "\n")
+	} else if scrollable {
+		sidebar.WriteString("\n")
 	}
 
 	// --- Main pane with scrolling ---
@@ -238,12 +243,16 @@ func (m model) View() string {
 
 	if scrollStart > 0 {
 		main.WriteString(dimStyle.Render("  ▲ more tasks") + "\n")
+	} else if m.taskTotalLines() > taskH {
+		main.WriteString("\n") // placeholder to keep layout stable
 	}
 	for _, line := range taskLines[scrollStart:lineEnd] {
 		main.WriteString(line + "\n")
 	}
 	if lineEnd < len(taskLines) {
 		main.WriteString(dimStyle.Render("  ▼ more tasks") + "\n")
+	} else if m.taskTotalLines() > taskH {
+		main.WriteString("\n") // placeholder to keep layout stable
 	}
 
 	promptBox := lipgloss.NewStyle().

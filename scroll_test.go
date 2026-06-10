@@ -96,7 +96,7 @@ func TestScrollRendering_TodayMultipleProjects(t *testing.T) {
 		t.Error("cursor task 'Shopping task 2' not visible")
 	}
 
-	// Now cursor at first task, scroll should go back
+	// Now cursor at first task, scroll should go back to top
 	m.taskCursor = 0
 	m.ensureTaskVisible()
 	v = m.View()
@@ -105,6 +105,60 @@ func TestScrollRendering_TodayMultipleProjects(t *testing.T) {
 	}
 	if !strings.Contains(v, "Work") {
 		t.Error("Work project header not visible")
+	}
+	// ▲ should NOT appear when scrolled to top
+	if strings.Contains(v, "▲ more tasks") {
+		t.Error("'▲ more tasks' should not appear when at top of list")
+	}
+}
+
+func TestScrollRendering_HeadersStayFixed(t *testing.T) {
+	m := model{
+		cfg:      config{AutoRefresh: false},
+		projects: []project{{ID: "p1", Name: "Work"}},
+		mode:     modeNormal,
+		width:    80,
+		height:   15,
+	}
+	for i := 0; i < 30; i++ {
+		m.tasks = append(m.tasks, task{ID: fmt.Sprintf("t%d", i), Content: fmt.Sprintf("Task %d", i), ProjectID: "p1"})
+	}
+
+	// At the top: no ▲, has ▼
+	m.taskCursor = 0
+	m.ensureTaskVisible()
+	v1 := m.View()
+
+	// In the middle: has both ▲ and ▼
+	m.taskCursor = 15
+	m.ensureTaskVisible()
+	v2 := m.View()
+
+	// At the bottom: has ▲, no ▼
+	m.taskCursor = 29
+	m.ensureTaskVisible()
+	v3 := m.View()
+
+	// Find "Today" header line position in each view - should be at the same position
+	lines1 := strings.Split(v1, "\n")
+	lines2 := strings.Split(v2, "\n")
+	lines3 := strings.Split(v3, "\n")
+
+	findHeader := func(lines []string) int {
+		for i, l := range lines {
+			if strings.Contains(l, "Today") && !strings.Contains(l, "sidebar") {
+				return i
+			}
+		}
+		return -1
+	}
+
+	h1 := findHeader(lines1)
+	h2 := findHeader(lines2)
+	h3 := findHeader(lines3)
+
+	if h1 != h2 || h2 != h3 {
+		t.Errorf("'Today' header moved: top=%d, middle=%d, bottom=%d", h1, h2, h3)
 	}
 }
 
