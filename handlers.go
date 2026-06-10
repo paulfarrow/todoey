@@ -41,6 +41,7 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.projectCursor = 0
 				m.searchQuery = ""
 				m.status = "Loading..."
+				m.ensureProjVisible()
 				m.refreshGen++
 				return m, m.refreshTasks()
 			}
@@ -49,6 +50,7 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.projectCursor = i + 1
 					m.searchQuery = ""
 					m.status = "Loading..."
+					m.ensureProjVisible()
 					m.refreshGen++
 					return m, m.refreshTasks()
 				}
@@ -130,6 +132,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.mode == modeVisual {
 				m.selected = visualRange(m.visualAnchor, m.taskCursor)
 			}
+			m.ensureTaskVisible()
 		}
 	case "k", "up":
 		if m.taskCursor > 0 {
@@ -137,6 +140,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.mode == modeVisual {
 				m.selected = visualRange(m.visualAnchor, m.taskCursor)
 			}
+			m.ensureTaskVisible()
 		}
 
 	case "J":
@@ -144,6 +148,8 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.projectCursor++
 			m.searchQuery = ""
 			m.status = "Loading..."
+			m.taskScroll = 0
+			m.ensureProjVisible()
 			m.refreshGen++
 			return m, m.refreshTasks()
 		}
@@ -152,6 +158,8 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.projectCursor--
 			m.searchQuery = ""
 			m.status = "Loading..."
+			m.taskScroll = 0
+			m.ensureProjVisible()
 			m.refreshGen++
 			return m, m.refreshTasks()
 		}
@@ -160,6 +168,8 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.projectCursor = 0
 		m.searchQuery = ""
 		m.status = "Loading..."
+		m.taskScroll = 0
+		m.ensureProjVisible()
 		m.refreshGen++
 		return m, m.refreshTasks()
 
@@ -176,14 +186,17 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.tasks = m.overdueOnly(m.allTasks)
 		}
 		m.taskCursor = 0
+		m.taskScroll = 0
 		m.selected = nil
 		m.mode = modeNormal
 
 	case "g":
 		m.taskCursor = 0
+		m.ensureTaskVisible()
 	case "G":
 		if len(m.tasks) > 0 {
 			m.taskCursor = len(m.tasks) - 1
+			m.ensureTaskVisible()
 		}
 
 	case "v", " ":
@@ -198,6 +211,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.taskCursor < len(m.tasks)-1 {
 				m.taskCursor++
 			}
+			m.ensureTaskVisible()
 		}
 	case "esc", "ctrl+c":
 		if m.filterOverdue {
@@ -207,6 +221,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.allTasks = nil
 			}
 			m.taskCursor = 0
+			m.taskScroll = 0
 			m.selected = nil
 			return m, nil
 		}

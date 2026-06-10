@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestView_ContainsTaskContent(t *testing.T) {
@@ -389,5 +392,144 @@ func TestView_DueDate(t *testing.T) {
 	v := m.View()
 	if !strings.Contains(v, "2024-06-15") {
 		t.Fatal("expected due date in task list")
+	}
+}
+
+// --- Scroll tests ---
+
+func TestEnsureTaskVisible_ScrollsDown(t *testing.T) {
+	m := testModel()
+	m.height = 15 // small window
+	m.taskCursor = 0
+	m.taskScroll = 0
+	// Simulate many tasks
+	m.tasks = make([]task, 50)
+	for i := range m.tasks {
+		m.tasks[i] = task{ID: fmt.Sprintf("t%d", i), Content: fmt.Sprintf("Task %d", i), ProjectID: "p1"}
+	}
+	m.taskCursor = 20
+	m.ensureTaskVisible()
+	if m.taskScroll == 0 {
+		t.Fatal("expected taskScroll to increase when cursor is past visible area")
+	}
+	if m.taskCursor < m.taskScroll || m.taskCursor >= m.taskScroll+m.taskListHeight() {
+		t.Fatalf("cursor %d not in visible range [%d, %d)", m.taskCursor, m.taskScroll, m.taskScroll+m.taskListHeight())
+	}
+}
+
+func TestEnsureTaskVisible_ScrollsUp(t *testing.T) {
+	m := testModel()
+	m.height = 15
+	m.tasks = make([]task, 50)
+	for i := range m.tasks {
+		m.tasks[i] = task{ID: fmt.Sprintf("t%d", i), Content: fmt.Sprintf("Task %d", i), ProjectID: "p1"}
+	}
+	m.taskScroll = 30
+	m.taskCursor = 5
+	m.ensureTaskVisible()
+	if m.taskScroll > 5 {
+		t.Fatalf("expected taskScroll <= 5, got %d", m.taskScroll)
+	}
+}
+
+func TestEnsureProjVisible_ScrollsDown(t *testing.T) {
+	m := testModel()
+	m.height = 12
+	m.projects = make([]project, 30)
+	for i := range m.projects {
+		m.projects[i] = project{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("Project %d", i)}
+	}
+	m.projectCursor = 25
+	m.ensureProjVisible()
+	if m.projScroll == 0 {
+		t.Fatal("expected projScroll to increase")
+	}
+	if m.projectCursor < m.projScroll || m.projectCursor >= m.projScroll+m.sidebarHeight() {
+		t.Fatalf("cursor %d not in visible range [%d, %d)", m.projectCursor, m.projScroll, m.projScroll+m.sidebarHeight())
+	}
+}
+
+func TestEnsureProjVisible_ScrollsUp(t *testing.T) {
+	m := testModel()
+	m.height = 12
+	m.projects = make([]project, 30)
+	for i := range m.projects {
+		m.projects[i] = project{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("Project %d", i)}
+	}
+	m.projScroll = 20
+	m.projectCursor = 2
+	m.ensureProjVisible()
+	if m.projScroll > 2 {
+		t.Fatalf("expected projScroll <= 2, got %d", m.projScroll)
+	}
+}
+
+func TestAvailableHeight(t *testing.T) {
+	m := testModel()
+	m.height = 30
+	h := m.availableHeight()
+	if h != 26 {
+		t.Fatalf("expected 26, got %d", h)
+	}
+	m.height = 5
+	h = m.availableHeight()
+	if h < 5 {
+		t.Fatalf("expected minimum 5, got %d", h)
+	}
+}
+
+func TestTaskListHeight(t *testing.T) {
+	m := testModel()
+	m.height = 30
+	h := m.taskListHeight()
+	if h <= 0 {
+		t.Fatalf("expected positive height, got %d", h)
+	}
+}
+
+func TestSidebarHeight(t *testing.T) {
+	m := testModel()
+	m.height = 30
+	h := m.sidebarHeight()
+	if h <= 0 {
+		t.Fatalf("expected positive height, got %d", h)
+	}
+}
+
+func TestView_ScrollIndicators(t *testing.T) {
+	m := testModel()
+	m.height = 12
+	m.width = 100
+	m.tasks = make([]task, 50)
+	for i := range m.tasks {
+		m.tasks[i] = task{ID: fmt.Sprintf("t%d", i), Content: fmt.Sprintf("Task %d", i), ProjectID: "p1"}
+	}
+	m.taskScroll = 5
+	m.taskCursor = 5
+	v := m.View()
+	if !strings.Contains(v, "▲ more") {
+		t.Fatal("expected '▲ more' scroll indicator at top")
+	}
+	if !strings.Contains(v, "▼ more") {
+		t.Fatal("expected '▼ more' scroll indicator at bottom")
+	}
+}
+
+func TestWindowResize_AdjustsScroll(t *testing.T) {
+	mock := newMock()
+	defer setMock(mock)()
+	m := testModel()
+	m.height = 30
+	m.tasks = make([]task, 50)
+	for i := range m.tasks {
+		m.tasks[i] = task{ID: fmt.Sprintf("t%d", i), Content: fmt.Sprintf("Task %d", i), ProjectID: "p1"}
+	}
+	m.taskCursor = 40
+	m.taskScroll = 35
+	// Resize to smaller
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 15})
+	rm := result.(model)
+	if rm.taskCursor < rm.taskScroll || rm.taskCursor >= rm.taskScroll+rm.taskListHeight() {
+		t.Fatalf("after resize cursor %d not visible in [%d, %d)", rm.taskCursor, rm.taskScroll, rm.taskScroll+rm.taskListHeight())
 	}
 }

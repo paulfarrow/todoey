@@ -115,6 +115,8 @@ func (m model) View() string {
 		return m.viewDetail()
 	}
 	sidebarWidth := 24
+
+	// --- Sidebar with scrolling ---
 	var sidebar strings.Builder
 	sidebar.WriteString("\n" + titleStyle.Render("Projects") + "\n")
 	sidebar.WriteString(dimStyle.Render(strings.Repeat("─", sidebarWidth-2)) + "\n")
@@ -127,15 +129,37 @@ func (m model) View() string {
 		return normalStyle.Render("  " + label)
 	}
 
-	sidebar.WriteString(renderItem("Today", m.projectCursor == 0) + "\n")
+	// Build list of all sidebar items: "Today" + projects
+	type sideItem struct {
+		label    string
+		selected bool
+	}
+	allItems := make([]sideItem, 0, 1+len(m.projects))
+	allItems = append(allItems, sideItem{"Today", m.projectCursor == 0})
 	for i, p := range m.projects {
 		name := p.Name
 		if len(name) > sidebarWidth-4 {
 			name = name[:sidebarWidth-4]
 		}
-		sidebar.WriteString(renderItem(name, i+1 == m.projectCursor) + "\n")
+		allItems = append(allItems, sideItem{name, i+1 == m.projectCursor})
 	}
 
+	sideH := m.sidebarHeight()
+	projEnd := m.projScroll + sideH
+	if projEnd > len(allItems) {
+		projEnd = len(allItems)
+	}
+	if m.projScroll > 0 {
+		sidebar.WriteString(dimStyle.Render("  ▲ more") + "\n")
+	}
+	for i := m.projScroll; i < projEnd; i++ {
+		sidebar.WriteString(renderItem(allItems[i].label, allItems[i].selected) + "\n")
+	}
+	if projEnd < len(allItems) {
+		sidebar.WriteString(dimStyle.Render("  ▼ more") + "\n")
+	}
+
+	// --- Main pane with scrolling ---
 	var main strings.Builder
 	mainWidth := m.width - sidebarWidth - 6
 	if mainWidth < 20 {
@@ -157,9 +181,27 @@ func (m model) View() string {
 	if m.filterOverdue {
 		main.WriteString(errorStyle.Render("  ⚠ Overdue only") + "  " + dimStyle.Render("(esc to clear)") + "\n\n")
 	}
+
 	today := time.Now().Format("2006-01-02")
+
+	// Render only the visible window of tasks
+	taskH := m.taskListHeight()
+	taskEnd := m.taskScroll + taskH
+	if taskEnd > len(m.tasks) {
+		taskEnd = len(m.tasks)
+	}
+	if m.taskScroll > 0 {
+		main.WriteString(dimStyle.Render("  ▲ more tasks") + "\n")
+	}
 	lastProjectID := ""
-	for i, t := range m.tasks {
+	// Track last project header before the visible window for context
+	if m.projectCursor == 0 && m.taskScroll > 0 {
+		for i := 0; i < m.taskScroll; i++ {
+			lastProjectID = m.tasks[i].ProjectID
+		}
+	}
+	for i := m.taskScroll; i < taskEnd; i++ {
+		t := m.tasks[i]
 		if m.projectCursor == 0 && t.ProjectID != lastProjectID {
 			lastProjectID = t.ProjectID
 			header := m.projectTag(t.ProjectID)
@@ -195,6 +237,9 @@ func (m model) View() string {
 			line = normalStyle.Render("  ○ "+t.Content) + dueRendered + tag
 		}
 		main.WriteString(line + "\n")
+	}
+	if taskEnd < len(m.tasks) {
+		main.WriteString(dimStyle.Render("  ▼ more tasks") + "\n")
 	}
 
 	promptBox := lipgloss.NewStyle().
@@ -241,8 +286,9 @@ func (m model) View() string {
 		main.WriteString(promptBox.Render(errorStyle.Render("Quit? ") + normalStyle.Render("[y] yes  [any] cancel")) + "\n")
 	}
 
-	sideRendered := sidebarStyle.Width(sidebarWidth).Render(sidebar.String())
-	mainRendered := paneStyle.Render(main.String())
+	contentHeight := m.availableHeight()
+	sideRendered := sidebarStyle.Width(sidebarWidth).Height(contentHeight).MaxHeight(contentHeight).Render(sidebar.String())
+	mainRendered := paneStyle.MaxHeight(contentHeight).Render(main.String())
 	content := lipgloss.JoinHorizontal(lipgloss.Top, sideRendered, mainRendered)
 
 	statusText := m.status

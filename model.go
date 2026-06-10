@@ -48,6 +48,8 @@ type model struct {
 	filterOverdue bool
 	width         int
 	height        int
+	taskScroll    int // first visible task index
+	projScroll    int // first visible project index in sidebar
 }
 
 type tickMsg struct{ gen int }
@@ -74,6 +76,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureTaskVisible()
+		m.ensureProjVisible()
 
 	case dataMsg:
 		if msg.projects != nil {
@@ -104,6 +108,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.selected = nil
 		m.status = fmt.Sprintf("%d tasks", len(m.tasks))
+		m.ensureTaskVisible()
+		m.ensureProjVisible()
 
 	case statusMsg:
 		m.status = string(msg)
@@ -252,4 +258,74 @@ func (m model) addTaskCompletion() string {
 		}
 	}
 	return ""
+}
+
+// availableHeight returns the number of lines available for content (excluding footer).
+func (m model) availableHeight() int {
+	if m.height == 0 {
+		return 100 // no terminal size yet; don't constrain
+	}
+	h := m.height - 4 // footer takes ~4 lines (border + 2 content lines + spacing)
+	if h < 5 {
+		h = 5
+	}
+	return h
+}
+
+// taskListHeight returns lines available for the task list in the main pane.
+func (m model) taskListHeight() int {
+	h := m.availableHeight() - 4 // header (~3 lines) + 1 for overdue/prompt margin
+	if m.filterOverdue {
+		h -= 2
+	}
+	// Reserve space for scroll indicators if list is scrollable
+	if len(m.tasks) > h {
+		h -= 2 // ▲ and ▼ indicators
+	}
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
+// sidebarHeight returns lines available for project items in the sidebar.
+func (m model) sidebarHeight() int {
+	h := m.availableHeight() - 3 // header: blank line + title + divider
+	// Reserve space for scroll indicators if list is scrollable
+	totalItems := 1 + len(m.projects)
+	if totalItems > h {
+		h -= 2 // ▲ and ▼ indicators
+	}
+	if h < 3 {
+		h = 3
+	}
+	return h
+}
+
+// ensureTaskVisible adjusts taskScroll so taskCursor is visible.
+func (m *model) ensureTaskVisible() {
+	visible := m.taskListHeight()
+	if m.taskCursor < m.taskScroll {
+		m.taskScroll = m.taskCursor
+	} else if m.taskCursor >= m.taskScroll+visible {
+		m.taskScroll = m.taskCursor - visible + 1
+	}
+	if m.taskScroll < 0 {
+		m.taskScroll = 0
+	}
+}
+
+// ensureProjVisible adjusts projScroll so projectCursor is visible.
+func (m *model) ensureProjVisible() {
+	visible := m.sidebarHeight()
+	// projectCursor 0 = "Today" which is item index 0, projects are 1..N
+	idx := m.projectCursor
+	if idx < m.projScroll {
+		m.projScroll = idx
+	} else if idx >= m.projScroll+visible {
+		m.projScroll = idx - visible + 1
+	}
+	if m.projScroll < 0 {
+		m.projScroll = 0
+	}
 }
