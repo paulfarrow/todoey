@@ -41,6 +41,20 @@ type project struct {
 	Name string `json:"name"`
 }
 
+// TodoistAPI is the interface for all Todoist operations, enabling test mocking.
+type TodoistAPI interface {
+	GetProjects() ([]project, error)
+	GetTodayTasks() ([]task, error)
+	GetTasksByProject(projectID string) ([]task, error)
+	DeleteTask(taskID string) error
+	CloseTask(taskID string) error
+	MoveTask(taskID, projectID string) error
+	SearchTasks(query string) ([]task, error)
+	RescheduleTask(taskID, dueString string) error
+	CreateTask(text string) (*task, error)
+	UpdateTask(taskID string, fields map[string]string) error
+}
+
 type TodoistClient struct {
 	token  string
 	client *http.Client

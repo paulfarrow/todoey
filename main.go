@@ -33,7 +33,7 @@ var (
 			Padding(0, 1)
 )
 
-var api = NewTodoistClient()
+var api TodoistAPI = NewTodoistClient()
 
 var projectColors = []lipgloss.Color{"75", "215", "114", "183", "87", "222", "159", "210"}
 
