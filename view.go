@@ -184,31 +184,17 @@ func (m model) View() string {
 
 	today := time.Now().Format("2006-01-02")
 
-	// Render only the visible window of tasks
-	taskH := m.taskListHeight()
-	taskEnd := m.taskScroll + taskH
-	if taskEnd > len(m.tasks) {
-		taskEnd = len(m.tasks)
-	}
-	if m.taskScroll > 0 {
-		main.WriteString(dimStyle.Render("  ▲ more tasks") + "\n")
-	}
+	// Build all task lines (including project group headers)
+	var taskLines []string
 	lastProjectID := ""
-	// Track last project header before the visible window for context
-	if m.projectCursor == 0 && m.taskScroll > 0 {
-		for i := 0; i < m.taskScroll; i++ {
-			lastProjectID = m.tasks[i].ProjectID
-		}
-	}
-	for i := m.taskScroll; i < taskEnd; i++ {
-		t := m.tasks[i]
+	for i, t := range m.tasks {
 		if m.projectCursor == 0 && t.ProjectID != lastProjectID {
 			lastProjectID = t.ProjectID
 			header := m.projectTag(t.ProjectID)
 			if header == "" {
 				header = dimStyle.Render("(no project)")
 			}
-			main.WriteString("\n" + header + "\n")
+			taskLines = append(taskLines, "", header)
 		}
 		due := dueStr(t)
 		overdue := t.Due != nil && t.Due.Date != "" && t.Due.Date < today
@@ -236,9 +222,27 @@ func (m model) View() string {
 		default:
 			line = normalStyle.Render("  ○ "+t.Content) + dueRendered + tag
 		}
+		taskLines = append(taskLines, line)
+	}
+
+	// Scroll the line list
+	taskH := m.taskListHeight()
+	lineEnd := m.taskScroll + taskH
+	if lineEnd > len(taskLines) {
+		lineEnd = len(taskLines)
+	}
+	scrollStart := m.taskScroll
+	if scrollStart > len(taskLines) {
+		scrollStart = len(taskLines)
+	}
+
+	if scrollStart > 0 {
+		main.WriteString(dimStyle.Render("  ▲ more tasks") + "\n")
+	}
+	for _, line := range taskLines[scrollStart:lineEnd] {
 		main.WriteString(line + "\n")
 	}
-	if taskEnd < len(m.tasks) {
+	if lineEnd < len(taskLines) {
 		main.WriteString(dimStyle.Render("  ▼ more tasks") + "\n")
 	}
 
@@ -288,7 +292,7 @@ func (m model) View() string {
 
 	contentHeight := m.availableHeight()
 	sideRendered := sidebarStyle.Width(sidebarWidth).Height(contentHeight).MaxHeight(contentHeight).Render(sidebar.String())
-	mainRendered := paneStyle.MaxHeight(contentHeight).Render(main.String())
+	mainRendered := paneStyle.Render(main.String())
 	content := lipgloss.JoinHorizontal(lipgloss.Top, sideRendered, mainRendered)
 
 	statusText := m.status

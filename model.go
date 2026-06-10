@@ -274,18 +274,57 @@ func (m model) availableHeight() int {
 
 // taskListHeight returns lines available for the task list in the main pane.
 func (m model) taskListHeight() int {
-	h := m.availableHeight() - 4 // header (~3 lines) + 1 for overdue/prompt margin
+	h := m.availableHeight()
+	h -= 3 // header: blank line + title + divider
 	if m.filterOverdue {
-		h -= 2
+		h -= 2 // overdue indicator + blank line
 	}
-	// Reserve space for scroll indicators if list is scrollable
-	if len(m.tasks) > h {
+	// Reserve space for scroll indicators only if there's room
+	totalLines := m.taskTotalLines()
+	if totalLines > h && h > 4 {
 		h -= 2 // ▲ and ▼ indicators
 	}
 	if h < 3 {
 		h = 3
 	}
 	return h
+}
+
+// taskTotalLines returns the total number of lines the task list would occupy
+// including project group headers on the Today view.
+func (m model) taskTotalLines() int {
+	if len(m.tasks) == 0 {
+		return 0
+	}
+	lines := len(m.tasks)
+	if m.projectCursor == 0 {
+		lastPID := ""
+		for _, t := range m.tasks {
+			if t.ProjectID != lastPID {
+				lastPID = t.ProjectID
+				lines += 2 // blank line + header
+			}
+		}
+	}
+	return lines
+}
+
+// taskCursorLine returns the line index (0-based) of the current taskCursor
+// within the full task line list (accounting for project headers).
+func (m model) taskCursorLine() int {
+	line := 0
+	lastPID := ""
+	for i, t := range m.tasks {
+		if m.projectCursor == 0 && t.ProjectID != lastPID {
+			lastPID = t.ProjectID
+			line += 2 // blank line + header
+		}
+		if i == m.taskCursor {
+			return line
+		}
+		line++
+	}
+	return line
 }
 
 // sidebarHeight returns lines available for project items in the sidebar.
@@ -302,13 +341,14 @@ func (m model) sidebarHeight() int {
 	return h
 }
 
-// ensureTaskVisible adjusts taskScroll so taskCursor is visible.
+// ensureTaskVisible adjusts taskScroll (line offset) so taskCursor is visible.
 func (m *model) ensureTaskVisible() {
 	visible := m.taskListHeight()
-	if m.taskCursor < m.taskScroll {
-		m.taskScroll = m.taskCursor
-	} else if m.taskCursor >= m.taskScroll+visible {
-		m.taskScroll = m.taskCursor - visible + 1
+	cursorLine := m.taskCursorLine()
+	if cursorLine < m.taskScroll {
+		m.taskScroll = cursorLine
+	} else if cursorLine >= m.taskScroll+visible {
+		m.taskScroll = cursorLine - visible + 1
 	}
 	if m.taskScroll < 0 {
 		m.taskScroll = 0

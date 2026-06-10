@@ -68,6 +68,85 @@ func TestScrollRendering_CursorAtBottom(t *testing.T) {
 	}
 }
 
+func TestScrollRendering_TodayMultipleProjects(t *testing.T) {
+	m := model{
+		cfg:      config{AutoRefresh: false},
+		projects: []project{{ID: "p1", Name: "Work"}, {ID: "p2", Name: "Personal"}, {ID: "p3", Name: "Shopping"}},
+		mode:     modeNormal,
+		width:    80,
+		height:   12,
+	}
+	// 3 tasks per project = 9 tasks + 6 header lines (2 per group) = 15 total lines
+	for i := 0; i < 3; i++ {
+		m.tasks = append(m.tasks, task{ID: fmt.Sprintf("w%d", i), Content: fmt.Sprintf("Work task %d", i), ProjectID: "p1"})
+	}
+	for i := 0; i < 3; i++ {
+		m.tasks = append(m.tasks, task{ID: fmt.Sprintf("p%d", i), Content: fmt.Sprintf("Personal task %d", i), ProjectID: "p2"})
+	}
+	for i := 0; i < 3; i++ {
+		m.tasks = append(m.tasks, task{ID: fmt.Sprintf("s%d", i), Content: fmt.Sprintf("Shopping task %d", i), ProjectID: "p3"})
+	}
+
+	// Cursor on last task of last project
+	m.taskCursor = 8 // "Shopping task 2"
+	m.ensureTaskVisible()
+
+	v := m.View()
+	if !strings.Contains(v, "Shopping task 2") {
+		t.Error("cursor task 'Shopping task 2' not visible")
+	}
+
+	// Now cursor at first task, scroll should go back
+	m.taskCursor = 0
+	m.ensureTaskVisible()
+	v = m.View()
+	if !strings.Contains(v, "Work task 0") {
+		t.Error("first task 'Work task 0' not visible after scrolling up")
+	}
+	if !strings.Contains(v, "Work") {
+		t.Error("Work project header not visible")
+	}
+}
+
+func TestScrollRendering_TodayOverdueWithHeaders(t *testing.T) {
+	m := model{
+		cfg:           config{AutoRefresh: false},
+		projects:      []project{{ID: "p1", Name: "Work"}, {ID: "p2", Name: "Personal"}},
+		mode:          modeNormal,
+		width:         80,
+		height:        12,
+		filterOverdue: true,
+	}
+	// Overdue tasks across 2 projects
+	for i := 0; i < 5; i++ {
+		m.tasks = append(m.tasks, task{
+			ID: fmt.Sprintf("w%d", i), Content: fmt.Sprintf("Overdue work %d", i), ProjectID: "p1",
+			Due: &struct {
+				Date        string `json:"date"`
+				String      string `json:"string"`
+				IsRecurring bool   `json:"is_recurring"`
+			}{Date: "2020-01-01"},
+		})
+	}
+	for i := 0; i < 5; i++ {
+		m.tasks = append(m.tasks, task{
+			ID: fmt.Sprintf("p%d", i), Content: fmt.Sprintf("Overdue personal %d", i), ProjectID: "p2",
+			Due: &struct {
+				Date        string `json:"date"`
+				String      string `json:"string"`
+				IsRecurring bool   `json:"is_recurring"`
+			}{Date: "2020-01-01"},
+		})
+	}
+	m.taskCursor = 9 // last task
+	m.ensureTaskVisible()
+
+	v := m.View()
+	if !strings.Contains(v, "Overdue personal 4") {
+		t.Error("last overdue task not visible")
+	}
+}
+
 func TestScrollRendering_SidebarScrolled(t *testing.T) {
 	m := model{
 		cfg:    config{AutoRefresh: false},
@@ -87,8 +166,6 @@ func TestScrollRendering_SidebarScrolled(t *testing.T) {
 		t.Error("'Projects' header must always be visible")
 	}
 	if !strings.Contains(v, "Project 14") {
-		t.Logf("projScroll=%d, sidebarHeight=%d, projectCursor=%d, availableHeight=%d", m.projScroll, m.sidebarHeight(), m.projectCursor, m.availableHeight())
-		t.Logf("total sidebar items: %d", 1+len(m.projects))
 		t.Error("selected project not visible")
 	}
 }

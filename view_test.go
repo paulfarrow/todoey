@@ -427,8 +427,9 @@ func TestEnsureTaskVisible_ScrollsUp(t *testing.T) {
 	m.taskScroll = 30
 	m.taskCursor = 5
 	m.ensureTaskVisible()
-	if m.taskScroll > 5 {
-		t.Fatalf("expected taskScroll <= 5, got %d", m.taskScroll)
+	cursorLine := m.taskCursorLine()
+	if m.taskScroll > cursorLine {
+		t.Fatalf("expected taskScroll <= cursorLine %d, got %d", cursorLine, m.taskScroll)
 	}
 }
 
