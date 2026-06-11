@@ -268,6 +268,11 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeMoveTask
 			m.input.clear()
 		}
+	case "W":
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			openTaskInBrowser(m.tasks[m.taskCursor].ID)
+			m.status = "Opened in browser"
+		}
 	case "r":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeReschedule
@@ -359,6 +364,9 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, closeTask(t.ID, t.Content)
 	case "d":
 		m.mode = modeDetailConfirmDelete
+	case "W":
+		openTaskInBrowser(t.ID)
+		m.status = "Opened in browser"
 	case "alt+m":
 		m.mode = modeDetailMove
 		m.detailField.clear()

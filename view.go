@@ -97,7 +97,7 @@ func (m model) viewDetail() string {
 	case modeDetailConfirmDelete:
 		b.WriteString(errorStyle.Render("  Delete this task? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	default:
-		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  r:reschedule  x:complete  d:delete  alt+m:move  q/esc:back") + "\n")
+		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  r:reschedule  x:complete  d:delete  alt+m:move  W:open in browser  q/esc:back") + "\n")
 	}
 
 	return lipgloss.NewStyle().
