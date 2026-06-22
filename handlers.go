@@ -199,6 +199,41 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ensureTaskVisible()
 		}
 
+	case "}":
+		// Jump to first task of next project group (Today view)
+		if m.projectCursor == 0 && len(m.tasks) > 0 {
+			curPID := m.tasks[m.taskCursor].ProjectID
+			for i := m.taskCursor + 1; i < len(m.tasks); i++ {
+				if m.tasks[i].ProjectID != curPID {
+					m.taskCursor = i
+					m.ensureTaskVisible()
+					break
+				}
+			}
+		}
+	case "{":
+		// Jump to first task of previous project group (Today view)
+		if m.projectCursor == 0 && len(m.tasks) > 0 && m.taskCursor > 0 {
+			curPID := m.tasks[m.taskCursor].ProjectID
+			// Find start of current group
+			groupStart := m.taskCursor
+			for groupStart > 0 && m.tasks[groupStart-1].ProjectID == curPID {
+				groupStart--
+			}
+			if groupStart > 0 {
+				// Jump to start of previous group
+				prevPID := m.tasks[groupStart-1].ProjectID
+				dest := groupStart - 1
+				for dest > 0 && m.tasks[dest-1].ProjectID == prevPID {
+					dest--
+				}
+				m.taskCursor = dest
+			} else {
+				m.taskCursor = 0
+			}
+			m.ensureTaskVisible()
+		}
+
 	case "v", " ":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			if m.selected == nil {

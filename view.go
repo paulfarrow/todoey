@@ -315,7 +315,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  V:visual  q/esc:back/quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  {/}:hop_project V:visual  q/esc:back/quit"),
 	)
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
