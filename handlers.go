@@ -104,6 +104,22 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Accumulate vim-style numeric prefix
+	ch := msg.String()
+	if len(ch) == 1 && ch[0] >= '1' && ch[0] <= '9' && m.countBuf == 0 {
+		m.countBuf = int(ch[0] - '0')
+		return m, nil
+	}
+	if len(ch) == 1 && ch[0] >= '0' && ch[0] <= '9' && m.countBuf > 0 {
+		m.countBuf = m.countBuf*10 + int(ch[0]-'0')
+		return m, nil
+	}
+	count := m.countBuf
+	if count == 0 {
+		count = 1
+	}
+	m.countBuf = 0
+
 	switch msg.String() {
 	case "q":
 		if !m.filterOverdue && m.searchQuery == "" && m.mode == modeNormal && len(m.selected) == 0 {
@@ -127,25 +143,29 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "j", "down":
-		if m.taskCursor < len(m.tasks)-1 {
+		for i := 0; i < count && m.taskCursor < len(m.tasks)-1; i++ {
 			m.taskCursor++
-			if m.mode == modeVisual {
-				m.selected = visualRange(m.visualAnchor, m.taskCursor)
-			}
-			m.ensureTaskVisible()
 		}
+		if m.mode == modeVisual {
+			m.selected = visualRange(m.visualAnchor, m.taskCursor)
+		}
+		m.ensureTaskVisible()
 	case "k", "up":
-		if m.taskCursor > 0 {
+		for i := 0; i < count && m.taskCursor > 0; i++ {
 			m.taskCursor--
-			if m.mode == modeVisual {
-				m.selected = visualRange(m.visualAnchor, m.taskCursor)
-			}
-			m.ensureTaskVisible()
 		}
+		if m.mode == modeVisual {
+			m.selected = visualRange(m.visualAnchor, m.taskCursor)
+		}
+		m.ensureTaskVisible()
 
 	case "J":
-		if m.projectCursor < len(m.projects) {
-			m.projectCursor++
+		newCursor := m.projectCursor + count
+		if newCursor > len(m.projects) {
+			newCursor = len(m.projects)
+		}
+		if newCursor != m.projectCursor {
+			m.projectCursor = newCursor
 			m.searchQuery = ""
 			m.status = "Loading..."
 			m.taskScroll = 0
@@ -154,8 +174,12 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.refreshTasks()
 		}
 	case "K":
-		if m.projectCursor > 0 {
-			m.projectCursor--
+		newCursor := m.projectCursor - count
+		if newCursor < 0 {
+			newCursor = 0
+		}
+		if newCursor != m.projectCursor {
+			m.projectCursor = newCursor
 			m.searchQuery = ""
 			m.status = "Loading..."
 			m.taskScroll = 0

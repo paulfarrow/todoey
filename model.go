@@ -50,6 +50,7 @@ type model struct {
 	height        int
 	taskScroll    int // first visible task index
 	projScroll    int // first visible project index in sidebar
+	countBuf      int // vim-style numeric prefix accumulator
 }
 
 type tickMsg struct{ gen int }
