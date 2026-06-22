@@ -46,6 +46,8 @@ The `TODOIST_API_TOKEN` environment variable takes precedence over the config fi
 | `k` / `↑` | Move cursor up |
 | `g` | Jump to top |
 | `G` | Jump to bottom |
+| `{` | Jump to previous project group (Today view) |
+| `}` | Jump to next project group (Today view) |
 | `J` | Next project |
 | `K` | Previous project |
 | `T` | Go to Today view |
@@ -55,6 +57,7 @@ The `TODOIST_API_TOKEN` environment variable takes precedence over the config fi
 | `r` | Reschedule task(s) |
 | `/` | Search tasks |
 | `c` | Go to project by name |
+| `W` | Open task in web browser |
 | `Alt+m` | Move task(s) to another project |
 | `Alt+r` | Manual refresh |
 | `O` | Toggle overdue-only filter |
@@ -63,6 +66,8 @@ The `TODOIST_API_TOKEN` environment variable takes precedence over the config fi
 | `Enter` | Open task detail view |
 | `Esc` | Clear search/filter/selection |
 | `q` | Quit (with confirmation) |
+
+Movement keys (`j`, `k`, `J`, `K`) accept a numeric prefix for repeated movement, e.g. `5j` moves down 5 tasks, `3K` moves up 3 projects.
 
 ### Visual Mode
 
