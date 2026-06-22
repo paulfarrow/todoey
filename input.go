@@ -118,6 +118,8 @@ func (t *textInput) handle(msg tea.KeyMsg) bool {
 		ch := msg.String()
 		if ch == " " || (len(ch) == 1 && ch[0] >= 0x20) {
 			t.insert(ch)
+		} else if len(msg.Runes) > 1 && msg.Type == tea.KeyRunes {
+			t.insert(string(msg.Runes))
 		} else {
 			return false
 		}

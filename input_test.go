@@ -277,6 +277,28 @@ func TestTextInput_HandleUnknownKeyNotConsumed(t *testing.T) {
 	}
 }
 
+func TestTextInput_HandlePaste(t *testing.T) {
+	var ti textInput
+	ti.set("")
+	consumed := ti.handle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello world")})
+	if !consumed {
+		t.Fatal("paste (multi-char runes) should be consumed")
+	}
+	if ti.val() != "hello world" {
+		t.Fatalf("expected 'hello world', got %q", ti.val())
+	}
+}
+
+func TestTextInput_HandlePasteAtMiddle(t *testing.T) {
+	var ti textInput
+	ti.set("ac")
+	ti.pos = 1
+	ti.handle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	if ti.val() != "abc" {
+		t.Fatalf("expected 'abc', got %q", ti.val())
+	}
+}
+
 func TestLastRune(t *testing.T) {
 	_, sz := lastRune("hello")
 	if sz != 1 {
