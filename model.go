@@ -26,6 +26,9 @@ const (
 	modeDetailReschedule
 	modeDetailMove
 	modeDetailConfirmDelete
+	modeDetailAddComment
+	modeDetailViewComments
+	modeAddSubTask
 	modeAddDesc
 	modeConfirmQuit
 )
@@ -35,6 +38,10 @@ type model struct {
 	projects      []project
 	tasks         []task
 	allTasks      []task // unfiltered tasks, set when filterOverdue is active
+	sections      []section
+	comments      []comment
+	subTasks      []task // sub-tasks of the currently viewed task in detail mode
+	subTaskCursor int    // selected sub-task index in detail view
 	projectCursor int
 	taskCursor    int
 	selected      map[int]bool
@@ -126,13 +133,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.status = string(msg)
 
+	case sectionsMsg:
+		m.sections = msg.sections
+
+	case commentsMsg:
+		m.comments = msg.comments
+		m.mode = modeDetailViewComments
+
+	case subTasksMsg:
+		m.subTasks = msg.subTasks
+
 	case tea.KeyMsg:
 		if m.mode == modeDetail ||
 			m.mode == modeDetailEditContent ||
 			m.mode == modeDetailEditDesc ||
 			m.mode == modeDetailReschedule ||
 			m.mode == modeDetailMove ||
-			m.mode == modeDetailConfirmDelete {
+			m.mode == modeDetailConfirmDelete ||
+			m.mode == modeDetailAddComment ||
+			m.mode == modeDetailViewComments {
 			return m.handleDetail(msg)
 		}
 		if m.mode == modeConfirmDelete {
@@ -216,7 +235,8 @@ func (m model) refreshTasks() tea.Cmd {
 	if m.projectCursor == 0 {
 		fetch = fetchTodayTasks(0)
 	} else if m.projectCursor-1 < len(m.projects) {
-		fetch = fetchProjectTasks(m.projects[m.projectCursor-1].ID, m.projectCursor)
+		projID := m.projects[m.projectCursor-1].ID
+		fetch = tea.Batch(fetchProjectTasks(projID, m.projectCursor), fetchSections(projID))
 	} else {
 		fetch = fetchTodayTasks(0)
 	}
@@ -292,7 +312,7 @@ func (m model) taskListHeight() int {
 }
 
 // taskTotalLines returns the total number of lines the task list would occupy
-// including project group headers on the Today view.
+// including project group headers on the Today view and section headers in project views.
 func (m model) taskTotalLines() int {
 	if len(m.tasks) == 0 {
 		return 0
@@ -306,20 +326,43 @@ func (m model) taskTotalLines() int {
 				lines += 2 // blank line + header
 			}
 		}
+	} else {
+		lastSID := ""
+		for _, t := range m.tasks {
+			if t.SectionID != lastSID {
+				lastSID = t.SectionID
+				// Only add lines if there's a named section
+				for _, s := range m.sections {
+					if s.ID == t.SectionID {
+						lines += 2 // blank line + section header
+						break
+					}
+				}
+			}
+		}
 	}
 	return lines
 }
 
 // taskCursorLine returns the line index (0-based) of the current taskCursor
-// within the full task line list (accounting for project headers).
-// Also returns the line index where the task's group header starts (or same as task line if no header).
+// within the full task line list (accounting for project headers and section headers).
 func (m model) taskCursorLine() int {
 	line := 0
 	lastPID := ""
+	lastSID := ""
 	for i, t := range m.tasks {
 		if m.projectCursor == 0 && t.ProjectID != lastPID {
 			lastPID = t.ProjectID
 			line += 2 // blank line + header
+		}
+		if m.projectCursor != 0 && t.SectionID != lastSID {
+			lastSID = t.SectionID
+			for _, s := range m.sections {
+				if s.ID == t.SectionID {
+					line += 2
+					break
+				}
+			}
 		}
 		if i == m.taskCursor {
 			return line
@@ -330,10 +373,11 @@ func (m model) taskCursorLine() int {
 }
 
 // taskCursorLineWithHeader returns the line where the cursor's section starts
-// (including the project header above the first task in a group).
+// (including the project header or section header above the first task in a group).
 func (m model) taskCursorLineWithHeader() int {
 	line := 0
 	lastPID := ""
+	lastSID := ""
 	headerLine := 0
 	for i, t := range m.tasks {
 		if m.projectCursor == 0 && t.ProjectID != lastPID {
@@ -341,9 +385,23 @@ func (m model) taskCursorLineWithHeader() int {
 			headerLine = line
 			line += 2
 		}
+		if m.projectCursor != 0 && t.SectionID != lastSID {
+			prevSID := lastSID
+			lastSID = t.SectionID
+			for _, s := range m.sections {
+				if s.ID == t.SectionID {
+					headerLine = line
+					line += 2
+					break
+				}
+			}
+			_ = prevSID
+		}
 		if i == m.taskCursor {
-			// If this is the first task in its group, include the header
 			if i == 0 || (m.projectCursor == 0 && m.tasks[i-1].ProjectID != t.ProjectID) {
+				return headerLine
+			}
+			if m.projectCursor != 0 && (i == 0 || m.tasks[i-1].SectionID != t.SectionID) {
 				return headerLine
 			}
 			return line

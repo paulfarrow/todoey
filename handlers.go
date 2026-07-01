@@ -92,6 +92,11 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				content += " // " + text
 			}
 			return m, createTask(content)
+		case modeAddSubTask:
+			if text != "" && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+				parentID := m.tasks[m.taskCursor].ID
+				return m, createSubTask(text, parentID)
+			}
 		}
 	case "esc", "ctrl+c":
 		m.mode = modeNormal
@@ -312,10 +317,18 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 			m.mode = modeDetail
+			m.subTasks = nil
+			m.subTaskCursor = 0
+			return m, fetchSubTasks(m.tasks[m.taskCursor].ID)
 		}
 	case "a":
 		m.mode = modeAdd
 		m.input.clear()
+	case "S":
+		if len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+			m.mode = modeAddSubTask
+			m.input.clear()
+		}
 	case "/":
 		m.mode = modeSearch
 		m.input.clear()
@@ -350,7 +363,8 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	t := m.tasks[m.taskCursor]
 
 	if m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
-		m.mode == modeDetailReschedule || m.mode == modeDetailMove {
+		m.mode == modeDetailReschedule || m.mode == modeDetailMove ||
+		m.mode == modeDetailAddComment {
 		switch msg.String() {
 		case "esc":
 			m.mode = modeDetail
@@ -377,6 +391,10 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if strings.ToLower(p.Name) == lower {
 						return m, moveTask(t.ID, t.Content, p.ID)
 					}
+				}
+			case modeDetailAddComment:
+				if text != "" {
+					return m, addComment(t.ID, text)
 				}
 			}
 		case "tab":
@@ -406,9 +424,23 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if m.mode == modeDetailViewComments {
+		switch msg.String() {
+		case "esc", "q":
+			m.mode = modeDetail
+			m.comments = nil
+		case "A":
+			m.mode = modeDetailAddComment
+			m.detailField.clear()
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "esc", "q":
 		m.mode = modeNormal
+		m.subTasks = nil
+		m.subTaskCursor = 0
 	case "e":
 		m.mode = modeDetailEditContent
 		m.detailField.set(t.Content)
@@ -419,7 +451,22 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeDetailReschedule
 		m.detailField.clear()
 	case "x":
+		// Complete sub-task if sub-tasks exist, otherwise complete parent
+		if len(m.subTasks) > 0 && m.subTaskCursor < len(m.subTasks) {
+			st := m.subTasks[m.subTaskCursor]
+			m.subTasks = append(m.subTasks[:m.subTaskCursor], m.subTasks[m.subTaskCursor+1:]...)
+			if m.subTaskCursor >= len(m.subTasks) && m.subTaskCursor > 0 {
+				m.subTaskCursor--
+			}
+			return m, closeTask(st.ID, st.Content)
+		}
 		m.mode = modeNormal
+		m.subTasks = nil
+		return m, closeTask(t.ID, t.Content)
+	case "X":
+		// Always complete the parent task
+		m.mode = modeNormal
+		m.subTasks = nil
 		return m, closeTask(t.ID, t.Content)
 	case "d":
 		m.mode = modeDetailConfirmDelete
@@ -429,6 +476,39 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "alt+m":
 		m.mode = modeDetailMove
 		m.detailField.clear()
+	case "C":
+		return m, fetchComments(t.ID)
+	case "A":
+		m.mode = modeDetailAddComment
+		m.detailField.clear()
+	case "S":
+		m.mode = modeAddSubTask
+		m.input.clear()
+	case "j", "down":
+		if len(m.subTasks) > 0 && m.subTaskCursor < len(m.subTasks)-1 {
+			m.subTaskCursor++
+		}
+	case "k", "up":
+		if len(m.subTasks) > 0 && m.subTaskCursor > 0 {
+			m.subTaskCursor--
+		}
+	case "enter":
+		// Open the selected sub-task as the detail view
+		if len(m.subTasks) > 0 && m.subTaskCursor < len(m.subTasks) {
+			// Find the sub-task in the main task list or switch to it
+			st := m.subTasks[m.subTaskCursor]
+			for i, tk := range m.tasks {
+				if tk.ID == st.ID {
+					m.taskCursor = i
+					m.subTasks = nil
+					m.subTaskCursor = 0
+					return m, fetchSubTasks(st.ID)
+				}
+			}
+			// Sub-task not in current list - open in browser as fallback
+			openTaskInBrowser(st.ID)
+			m.status = "Opened sub-task in browser"
+		}
 	}
 	return m, nil
 }

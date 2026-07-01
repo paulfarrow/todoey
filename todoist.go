@@ -41,11 +41,29 @@ type project struct {
 	Name string `json:"name"`
 }
 
+type section struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	ProjectID    string `json:"project_id"`
+	SectionOrder int    `json:"section_order"`
+}
+
+type comment struct {
+	ID       string `json:"id"`
+	Content  string `json:"content"`
+	PostedAt string `json:"posted_at"`
+}
+
 // TodoistAPI is the interface for all Todoist operations, enabling test mocking.
 type TodoistAPI interface {
 	GetProjects() ([]project, error)
 	GetTodayTasks() ([]task, error)
 	GetTasksByProject(projectID string) ([]task, error)
+	GetSections(projectID string) ([]section, error)
+	GetSubTasks(parentID string) ([]task, error)
+	GetComments(taskID string) ([]comment, error)
+	AddComment(taskID, content string) (*comment, error)
+	CreateSubTask(content, parentID string) (*task, error)
 	DeleteTask(taskID string) error
 	CloseTask(taskID string) error
 	MoveTask(taskID, projectID string) error
@@ -191,4 +209,70 @@ func (c *TodoistClient) CreateTask(text string) (*task, error) {
 func (c *TodoistClient) UpdateTask(taskID string, fields map[string]string) error {
 	_, err := c.do("POST", "/tasks/"+taskID, fields)
 	return err
+}
+
+func (c *TodoistClient) GetSections(projectID string) ([]section, error) {
+	data, err := c.do("GET", "/sections?project_id="+projectID+"&limit=200", nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Results []section `json:"results"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func (c *TodoistClient) GetComments(taskID string) ([]comment, error) {
+	data, err := c.do("GET", "/comments?task_id="+taskID+"&limit=200", nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Results []comment `json:"results"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func (c *TodoistClient) AddComment(taskID, content string) (*comment, error) {
+	body := map[string]string{"task_id": taskID, "content": content}
+	data, err := c.do("POST", "/comments", body)
+	if err != nil {
+		return nil, err
+	}
+	var cm comment
+	if err := json.Unmarshal(data, &cm); err != nil {
+		return nil, err
+	}
+	return &cm, nil
+}
+
+func (c *TodoistClient) CreateSubTask(content, parentID string) (*task, error) {
+	body := map[string]string{"content": content, "parent_id": parentID}
+	data, err := c.do("POST", "/tasks", body)
+	if err != nil {
+		return nil, err
+	}
+	var t task
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (c *TodoistClient) GetSubTasks(parentID string) ([]task, error) {
+	data, err := c.do("GET", "/tasks?parent_id="+parentID+"&limit=200", nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp paginatedTasks
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Results, nil
 }

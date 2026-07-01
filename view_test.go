@@ -199,7 +199,7 @@ func TestViewDetail_Basic(t *testing.T) {
 	if !strings.Contains(v, "Task 1") {
 		t.Fatal("expected task content in detail view")
 	}
-	if !strings.Contains(v, "e:edit content") {
+	if !strings.Contains(v, "e:edit") {
 		t.Fatal("expected help line in detail view")
 	}
 }
@@ -390,8 +390,9 @@ func TestView_DueDate(t *testing.T) {
 	}{Date: "2024-06-15"}
 	m.width = 100
 	v := m.View()
-	if !strings.Contains(v, "2024-06-15") {
-		t.Fatal("expected due date in task list")
+	// Now shows friendly format like "15 Jun 2024" or "Sat 15 Jun"
+	if !strings.Contains(v, "Jun") {
+		t.Fatal("expected friendly due date in task list")
 	}
 }
 

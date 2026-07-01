@@ -103,3 +103,66 @@ func createTask(content string) tea.Cmd {
 		return statusMsg(fmt.Sprintf("Added: %s", content))
 	}
 }
+
+type sectionsMsg struct {
+	sections []section
+}
+
+type commentsMsg struct {
+	comments []comment
+}
+
+type subTasksMsg struct {
+	subTasks []task
+}
+
+func fetchSections(projectID string) tea.Cmd {
+	return func() tea.Msg {
+		sections, err := api.GetSections(projectID)
+		if err != nil {
+			return errMsg(fmt.Sprintf("Error fetching sections: %v", err))
+		}
+		return sectionsMsg{sections: sections}
+	}
+}
+
+func fetchComments(taskID string) tea.Cmd {
+	return func() tea.Msg {
+		comments, err := api.GetComments(taskID)
+		if err != nil {
+			return errMsg(fmt.Sprintf("Error fetching comments: %v", err))
+		}
+		return commentsMsg{comments: comments}
+	}
+}
+
+func addComment(taskID, content string) tea.Cmd {
+	return func() tea.Msg {
+		if _, err := api.AddComment(taskID, content); err != nil {
+			return errMsg(fmt.Sprintf("Error adding comment: %v", err))
+		}
+		return statusMsg(fmt.Sprintf("Comment added"))
+	}
+}
+
+func createSubTask(content, parentID string) tea.Cmd {
+	return func() tea.Msg {
+		if _, err := api.CreateSubTask(content, parentID); err != nil {
+			return errMsg(fmt.Sprintf("Error adding sub-task: %v", err))
+		}
+		return statusMsg(fmt.Sprintf("Sub-task added: %s", content))
+	}
+}
+
+func fetchSubTasks(parentID string) tea.Cmd {
+	return func() tea.Msg {
+		tasks, err := api.GetSubTasks(parentID)
+		if err != nil {
+			return errMsg(fmt.Sprintf("Error fetching sub-tasks: %v", err))
+		}
+		if tasks == nil {
+			tasks = []task{}
+		}
+		return subTasksMsg{subTasks: tasks}
+	}
+}

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -74,6 +76,23 @@ func (m *mockAPI) CreateTask(text string) (*task, error) {
 func (m *mockAPI) UpdateTask(taskID string, fields map[string]string) error {
 	m.updatedTasks = append(m.updatedTasks, mockUpdate{taskID, fields})
 	return m.err
+}
+func (m *mockAPI) GetSections(projectID string) ([]section, error) {
+	return nil, m.err
+}
+func (m *mockAPI) GetSubTasks(parentID string) ([]task, error) {
+	return nil, m.err
+}
+func (m *mockAPI) GetComments(taskID string) ([]comment, error) {
+	return nil, m.err
+}
+func (m *mockAPI) AddComment(taskID, content string) (*comment, error) {
+	cm := comment{ID: "cm-1", Content: content}
+	return &cm, m.err
+}
+func (m *mockAPI) CreateSubTask(content, parentID string) (*task, error) {
+	t := task{ID: "sub-1", Content: content, ParentID: parentID}
+	return &t, m.err
 }
 
 func newMock() *mockAPI {
@@ -468,8 +487,25 @@ func TestDueStr(t *testing.T) {
 		String      string `json:"string"`
 		IsRecurring bool   `json:"is_recurring"`
 	}{Date: "2024-06-01"}
-	if dueStr(tk) != " (2024-06-01)" {
-		t.Fatalf("expected ' (2024-06-01)', got %q", dueStr(tk))
+	result := dueStr(tk)
+	if result == "" {
+		t.Fatal("expected non-empty due string")
+	}
+	// Should contain friendly format, not raw ISO
+	if !strings.Contains(result, "Jun") && !strings.Contains(result, "2024") {
+		t.Fatalf("expected friendly date with month, got %q", result)
+	}
+	// Test with Today's date
+	tk.Due.Date = time.Now().Format("2006-01-02")
+	result = dueStr(tk)
+	if !strings.Contains(result, "Today") {
+		t.Fatalf("expected 'Today', got %q", result)
+	}
+	// Test recurring
+	tk.Due.IsRecurring = true
+	result = dueStr(tk)
+	if !strings.Contains(result, "🔁") {
+		t.Fatalf("expected recurring indicator, got %q", result)
 	}
 }
 

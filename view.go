@@ -74,6 +74,33 @@ func (m model) viewDetail() string {
 		b.WriteString(labelStyle.Render("🏷 Labels") + "  " + strings.TrimSpace(labels) + "\n")
 	}
 
+	// Sub-tasks
+	if m.subTasks != nil {
+		b.WriteString("\n")
+		if len(m.subTasks) == 0 {
+			b.WriteString(labelStyle.Render("📋 Sub-tasks") + "  " + dimStyle.Render("none (S to add)") + "\n")
+		} else {
+			b.WriteString(labelStyle.Render("📋 Sub-tasks") + "  " + dimStyle.Render("(j/k:select  x:complete  enter:open)") + "\n")
+			for i, st := range m.subTasks {
+				checkbox := "○"
+				stStyle := valueStyle
+				if st.Priority >= 3 {
+					stStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("215"))
+				}
+				prefix := "    "
+				if i == m.subTaskCursor {
+					prefix = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("78")).Render("▸") + " "
+					stStyle = stStyle.Bold(true)
+				}
+				b.WriteString(prefix + dimStyle.Render(checkbox) + " " + stStyle.Render(st.Content))
+				if st.Due != nil && st.Due.Date != "" {
+					b.WriteString(" " + dimStyle.Render("("+st.Due.Date+")"))
+				}
+				b.WriteString("\n")
+			}
+		}
+	}
+
 	b.WriteString("\n")
 	switch m.mode {
 	case modeDetailEditContent:
@@ -96,8 +123,20 @@ func (m model) viewDetail() string {
 		b.WriteString(titleStyle.Render("  Move to project: ") + m.detailField.view() + ghost + "\n")
 	case modeDetailConfirmDelete:
 		b.WriteString(errorStyle.Render("  Delete this task? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
+	case modeDetailAddComment:
+		b.WriteString(titleStyle.Render("  Add comment: ") + m.detailField.view() + "\n")
+	case modeDetailViewComments:
+		b.WriteString(titleStyle.Render("  Comments:") + "\n")
+		if len(m.comments) == 0 {
+			b.WriteString(dimStyle.Render("    No comments") + "\n")
+		} else {
+			for _, cm := range m.comments {
+				b.WriteString(dimStyle.Render("    • ") + normalStyle.Render(cm.Content) + "\n")
+			}
+		}
+		b.WriteString("\n" + helpStyle.Render("  A:add comment  q/esc:back") + "\n")
 	default:
-		b.WriteString(helpStyle.Render("e:edit content  E:edit desc  r:reschedule  x:complete  d:delete  alt+m:move  W:open in browser  q/esc:back") + "\n")
+		b.WriteString(helpStyle.Render("e:edit  E:desc  r:reschedule  x:complete  X:complete parent  d:delete  alt+m:move  W:web  C:comments  A:comment  S:sub-task  q/esc:back") + "\n")
 	}
 
 	return lipgloss.NewStyle().
@@ -110,7 +149,8 @@ func (m model) viewDetail() string {
 
 func (m model) View() string {
 	if (m.mode == modeDetail || m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
-		m.mode == modeDetailReschedule || m.mode == modeDetailMove || m.mode == modeDetailConfirmDelete) &&
+		m.mode == modeDetailReschedule || m.mode == modeDetailMove || m.mode == modeDetailConfirmDelete ||
+		m.mode == modeDetailAddComment || m.mode == modeDetailViewComments) &&
 		len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		return m.viewDetail()
 	}
@@ -189,9 +229,10 @@ func (m model) View() string {
 
 	today := time.Now().Format("2006-01-02")
 
-	// Build all task lines (including project group headers)
+	// Build all task lines (including project group headers and section headers)
 	var taskLines []string
 	lastProjectID := ""
+	lastSectionID := ""
 	for i, t := range m.tasks {
 		if m.projectCursor == 0 && t.ProjectID != lastProjectID {
 			lastProjectID = t.ProjectID
@@ -200,6 +241,22 @@ func (m model) View() string {
 				header = dimStyle.Render("(no project)")
 			}
 			taskLines = append(taskLines, "", header)
+		}
+		// Section headers in project view
+		if m.projectCursor != 0 && t.SectionID != lastSectionID {
+			lastSectionID = t.SectionID
+			sectionName := ""
+			for _, s := range m.sections {
+				if s.ID == t.SectionID {
+					sectionName = s.Name
+					break
+				}
+			}
+			if sectionName != "" {
+				taskLines = append(taskLines, "", dimStyle.Render("┄ ")+lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75")).Render(sectionName))
+			} else if lastSectionID == "" && i > 0 {
+				// No section (ungrouped) - only show divider if there were prior tasks
+			}
 		}
 		due := dueStr(t)
 		overdue := t.Due != nil && t.Due.Date != "" && t.Due.Date < today
@@ -214,18 +271,50 @@ func (m model) View() string {
 				tag = " " + tag
 			}
 		}
+		// Priority indicator
+		priorityPrefix := ""
+		switch t.Priority {
+		case 4:
+			priorityPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("⚑ ")
+		case 3:
+			priorityPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("215")).Render("⚑ ")
+		case 2:
+			priorityPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render("⚑ ")
+		}
+		// Labels
+		labelStr := ""
+		if len(t.Labels) > 0 {
+			for _, l := range t.Labels {
+				labelStr += " " + dimStyle.Render("@"+l)
+			}
+		}
+		// Deadline indicator
+		deadlineStr := ""
+		if t.Deadline != nil && t.Deadline.Date != "" {
+			deadlineStr = " " + lipgloss.NewStyle().Foreground(lipgloss.Color("215")).Render("⏳"+t.Deadline.Date)
+		}
+		// Duration indicator
+		durationStr := ""
+		if t.Duration != nil {
+			durationStr = " " + dimStyle.Render(fmt.Sprintf("⏱%d%s", t.Duration.Amount, t.Duration.Unit[:1]))
+		}
+		// Sub-task indentation
+		indent := "  "
+		if t.ParentID != "" {
+			indent = "    "
+		}
 		isCursor := i == m.taskCursor
 		isMarked := m.selected[i]
 		var line string
 		switch {
 		case isCursor && isMarked:
-			line = markedCursorStyle.Render(" ▶ "+t.Content) + dueRendered + tag
+			line = markedCursorStyle.Render(indent+"▶ "+priorityPrefix+t.Content) + dueRendered + deadlineStr + durationStr + tag + labelStr
 		case isCursor:
-			line = selectedStyle.Render(" ○ "+t.Content) + dueRendered + tag
+			line = selectedStyle.Render(indent+"○ "+priorityPrefix+t.Content) + dueRendered + deadlineStr + durationStr + tag + labelStr
 		case isMarked:
-			line = markedStyle.Render(" ● "+t.Content) + dueRendered + tag
+			line = markedStyle.Render(indent+"● "+priorityPrefix+t.Content) + dueRendered + deadlineStr + durationStr + tag + labelStr
 		default:
-			line = normalStyle.Render("  ○ "+t.Content) + dueRendered + tag
+			line = normalStyle.Render(indent+"○ "+priorityPrefix+t.Content) + dueRendered + deadlineStr + durationStr + tag + labelStr
 		}
 		taskLines = append(taskLines, line)
 	}
@@ -295,6 +384,8 @@ func (m model) View() string {
 		main.WriteString(promptBox.Render(titleStyle.Render("Move to project: ") + m.input.view() + ghost) + "\n")
 	} else if m.mode == modeReschedule && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		main.WriteString(promptBox.Render(titleStyle.Render("Reschedule to: ") + m.input.view()) + "\n")
+	} else if m.mode == modeAddSubTask && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+		main.WriteString(promptBox.Render(titleStyle.Render("Sub-task for \""+m.tasks[m.taskCursor].Content+"\": ") + m.input.view()) + "\n")
 	} else if m.mode == modeConfirmQuit {
 		main.WriteString(promptBox.Render(errorStyle.Render("Quit? ") + normalStyle.Render("[y] yes  [any] cancel")) + "\n")
 	}
@@ -315,7 +406,7 @@ func (m model) View() string {
 	}
 	footer := footerStyle.Width(footerWidth - 2).Render(
 		statusRendered + "\n" +
-			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  {/}:hop_project V:visual  q/esc:back/quit"),
+			helpStyle.Render("j/k:tasks  J/K:projects  x:complete  d:delete  a:add  S:sub-task  /:search  c:goto  alt+m:move  r:reschedule  O:overdue  alt+r:refresh  g/G:top/bottom  {/}:project group  V:visual  q/esc:back/quit"),
 	)
 	if m.mode == modeVisual {
 		footer = footerStyle.Width(footerWidth - 2).Render(
@@ -328,8 +419,62 @@ func (m model) View() string {
 }
 
 func dueStr(t task) string {
-	if t.Due != nil && t.Due.Date != "" {
-		return " (" + t.Due.Date + ")"
+	if t.Due == nil || t.Due.Date == "" {
+		return ""
 	}
-	return ""
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	tomorrow := now.AddDate(0, 0, 1).Format("2006-01-02")
+	yesterday := now.AddDate(0, 0, -1).Format("2006-01-02")
+
+	dateStr := t.Due.Date
+	// Extract just the date part if it contains time
+	datePart := dateStr
+	if len(dateStr) > 10 {
+		datePart = dateStr[:10]
+	}
+
+	// Friendly name
+	var friendly string
+	switch datePart {
+	case today:
+		friendly = "Today"
+	case tomorrow:
+		friendly = "Tomorrow"
+	case yesterday:
+		friendly = "Yesterday"
+	default:
+		// Use the Due.String if available and short enough
+		if t.Due.String != "" && len(t.Due.String) <= 20 {
+			friendly = t.Due.String
+		} else {
+			// Parse and format as "Mon 2 Jan"
+			if parsed, err := time.Parse("2006-01-02", datePart); err == nil {
+				if parsed.Year() == now.Year() {
+					friendly = parsed.Format("Mon 2 Jan")
+				} else {
+					friendly = parsed.Format("2 Jan 2006")
+				}
+			} else {
+				friendly = datePart
+			}
+		}
+	}
+
+	// Add time if present
+	if len(dateStr) > 10 {
+		// Format: 2006-01-02T15:04:05 or 2006-01-02T15:04:05Z
+		if parsed, err := time.Parse("2006-01-02T15:04:05", dateStr[:19]); err == nil {
+			friendly += " " + parsed.Format("15:04")
+		} else if parsed, err := time.Parse("2006-01-02T15:04:05Z", dateStr[:20]); err == nil {
+			friendly += " " + parsed.Format("15:04")
+		}
+	}
+
+	// Recurring indicator
+	if t.Due.IsRecurring {
+		friendly += " 🔁"
+	}
+
+	return " (" + friendly + ")"
 }
