@@ -102,13 +102,18 @@ func (m model) viewDetail() string {
 	}
 
 	b.WriteString("\n")
+	// Available width for input fields inside detail view
+	detailInputWidth := w - 16 // account for border, padding, and label indent
+	if detailInputWidth < 20 {
+		detailInputWidth = 20
+	}
 	switch m.mode {
 	case modeDetailEditContent:
-		b.WriteString(titleStyle.Render("  Edit content: ") + m.detailField.view() + "\n")
+		b.WriteString(titleStyle.Render("  Edit content: ") + m.detailField.viewWidth(detailInputWidth-16) + "\n")
 	case modeDetailEditDesc:
-		b.WriteString(titleStyle.Render("  Edit description: ") + m.detailField.view() + "\n")
+		b.WriteString(titleStyle.Render("  Edit description: ") + m.detailField.viewWidth(detailInputWidth-20) + "\n")
 	case modeDetailReschedule:
-		b.WriteString(titleStyle.Render("  Reschedule to: ") + m.detailField.view() + "\n")
+		b.WriteString(titleStyle.Render("  Reschedule to: ") + m.detailField.viewWidth(detailInputWidth-17) + "\n")
 	case modeDetailMove:
 		ghost := ""
 		lower := strings.ToLower(m.detailField.val())
@@ -120,11 +125,11 @@ func (m model) viewDetail() string {
 				}
 			}
 		}
-		b.WriteString(titleStyle.Render("  Move to project: ") + m.detailField.view() + ghost + "\n")
+		b.WriteString(titleStyle.Render("  Move to project: ") + m.detailField.viewWidth(detailInputWidth-19) + ghost + "\n")
 	case modeDetailConfirmDelete:
 		b.WriteString(errorStyle.Render("  Delete this task? ") + normalStyle.Render("[y] yes  [any] cancel") + "\n")
 	case modeDetailAddComment:
-		b.WriteString(titleStyle.Render("  Add comment: ") + m.detailField.view() + "\n")
+		b.WriteString(titleStyle.Render("  Add comment: ") + m.detailField.viewWidth(detailInputWidth-15) + "\n")
 	case modeDetailViewComments:
 		b.WriteString(titleStyle.Render("  Comments:") + "\n")
 		if len(m.comments) == 0 {
@@ -348,7 +353,14 @@ func (m model) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
 		Padding(0, 1).
-		MarginTop(1)
+		MarginTop(1).
+		MaxWidth(mainWidth)
+
+	// Available width inside the prompt box (subtract border + padding)
+	inputWidth := mainWidth - 6
+	if inputWidth < 20 {
+		inputWidth = 20
+	}
 
 	if m.mode == modeAdd {
 		ghost := ""
@@ -357,17 +369,17 @@ func (m model) View() string {
 			fragment := m.input.val()[idx+1:]
 			ghost = dimStyle.Render(c[len(fragment):])
 		}
-		main.WriteString(promptBox.Render(titleStyle.Render("New task: ") + m.input.view() + ghost) + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("New task: ") + m.input.viewWidth(inputWidth-10) + ghost) + "\n")
 	} else if m.mode == modeAddDesc {
-		main.WriteString(promptBox.Render(dimStyle.Render("Task: "+m.detailField.val()) + "\n" + titleStyle.Render("Description (enter to skip): ") + m.input.view()) + "\n")
+		main.WriteString(promptBox.Render(dimStyle.Render("Task: "+m.detailField.val()) + "\n" + titleStyle.Render("Description (enter to skip): ") + m.input.viewWidth(inputWidth-30)) + "\n")
 	} else if m.mode == modeSearch {
-		main.WriteString(promptBox.Render(titleStyle.Render("Search: ") + m.input.view()) + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Search: ") + m.input.viewWidth(inputWidth-8)) + "\n")
 	} else if m.mode == modeGoto {
 		ghost := ""
 		if c := m.gotoCompletion(); c != "" && c != m.input.val() {
 			ghost = dimStyle.Render(c[len(m.input.val()):])
 		}
-		main.WriteString(promptBox.Render(titleStyle.Render("Go to project: ") + m.input.view() + ghost) + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Go to project: ") + m.input.viewWidth(inputWidth-16) + ghost) + "\n")
 	} else if m.mode == modeConfirmDelete && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		var deletePrompt string
 		if len(m.selected) > 1 {
@@ -381,11 +393,12 @@ func (m model) View() string {
 		if c := m.gotoCompletion(); c != "" && c != m.input.val() {
 			ghost = dimStyle.Render(c[len(m.input.val()):])
 		}
-		main.WriteString(promptBox.Render(titleStyle.Render("Move to project: ") + m.input.view() + ghost) + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Move to project: ") + m.input.viewWidth(inputWidth-18) + ghost) + "\n")
 	} else if m.mode == modeReschedule && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-		main.WriteString(promptBox.Render(titleStyle.Render("Reschedule to: ") + m.input.view()) + "\n")
+		main.WriteString(promptBox.Render(titleStyle.Render("Reschedule to: ") + m.input.viewWidth(inputWidth-15)) + "\n")
 	} else if m.mode == modeAddSubTask && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-		main.WriteString(promptBox.Render(titleStyle.Render("Sub-task for \""+m.tasks[m.taskCursor].Content+"\": ") + m.input.view()) + "\n")
+		label := "Sub-task: "
+		main.WriteString(promptBox.Render(titleStyle.Render(label) + m.input.viewWidth(inputWidth-len(label))) + "\n")
 	} else if m.mode == modeConfirmQuit {
 		main.WriteString(promptBox.Render(errorStyle.Render("Quit? ") + normalStyle.Render("[y] yes  [any] cancel")) + "\n")
 	}

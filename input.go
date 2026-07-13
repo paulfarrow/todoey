@@ -87,6 +87,51 @@ func (t *textInput) view() string {
 	return before + cursorChar + after
 }
 
+// viewWidth renders the input with a visible window of the given width,
+// scrolling horizontally to keep the cursor visible.
+func (t *textInput) viewWidth(w int) string {
+	if w <= 0 {
+		return t.view()
+	}
+	before := t.buf[:t.pos]
+	after := t.buf[t.pos:]
+
+	var cursorChar string
+	var afterCursor string
+	if after == "" {
+		cursorChar = "█"
+		afterCursor = ""
+	} else {
+		_, sz := firstRune(after)
+		cursorChar = "\x1b[7m" + after[:sz] + "\x1b[0m"
+		afterCursor = after[sz:]
+	}
+
+	// Calculate visible window: show as much before cursor as fits,
+	// with at least some after-cursor content visible
+	maxBefore := w - 2 // leave room for cursor + at least 1 char after
+	if maxBefore < 0 {
+		maxBefore = 0
+	}
+
+	visibleBefore := before
+	if len(visibleBefore) > maxBefore {
+		visibleBefore = "…" + visibleBefore[len(visibleBefore)-maxBefore+1:]
+	}
+
+	// How much space remains after before+cursor
+	remaining := w - len(visibleBefore) - 1 // -1 for cursor char
+	if remaining < 0 {
+		remaining = 0
+	}
+	visibleAfter := afterCursor
+	if len(visibleAfter) > remaining {
+		visibleAfter = visibleAfter[:remaining-1] + "…"
+	}
+
+	return visibleBefore + cursorChar + visibleAfter
+}
+
 // handle processes a KeyMsg for text input; returns true if the key was consumed.
 func (t *textInput) handle(msg tea.KeyMsg) bool {
 	switch msg.String() {
