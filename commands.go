@@ -150,7 +150,15 @@ func createSubTask(content, parentID string) tea.Cmd {
 		if _, err := api.CreateSubTask(content, parentID); err != nil {
 			return errMsg(fmt.Sprintf("Error adding sub-task: %v", err))
 		}
-		return statusMsg(fmt.Sprintf("Sub-task added: %s", content))
+		// Re-fetch sub-tasks to refresh the list in detail view
+		tasks, err := api.GetSubTasks(parentID)
+		if err != nil {
+			return errMsg(fmt.Sprintf("Sub-task added but failed to refresh: %v", err))
+		}
+		if tasks == nil {
+			tasks = []task{}
+		}
+		return subTasksMsg{subTasks: tasks}
 	}
 }
 

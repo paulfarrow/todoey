@@ -95,11 +95,17 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case modeAddSubTask:
 			if text != "" && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 				parentID := m.tasks[m.taskCursor].ID
+				m.mode = modeDetail
 				return m, createSubTask(text, parentID)
 			}
+			m.mode = modeDetail
 		}
 	case "esc", "ctrl+c":
-		m.mode = modeNormal
+		if m.mode == modeAddSubTask {
+			m.mode = modeDetail
+		} else {
+			m.mode = modeNormal
+		}
 		m.input.clear()
 		m.detailField.clear()
 	default:

@@ -140,6 +140,8 @@ func (m model) viewDetail() string {
 			}
 		}
 		b.WriteString("\n" + helpStyle.Render("  A:add comment  q/esc:back") + "\n")
+	case modeAddSubTask:
+		b.WriteString(titleStyle.Render("  Add sub-task: ") + m.input.viewWidth(detailInputWidth-16) + "\n")
 	default:
 		b.WriteString(helpStyle.Render("e:edit  E:desc  r:reschedule  x:complete  X:complete parent  d:delete  alt+m:move  W:web  C:comments  A:comment  S:sub-task  q/esc:back") + "\n")
 	}
@@ -155,7 +157,7 @@ func (m model) viewDetail() string {
 func (m model) View() string {
 	if (m.mode == modeDetail || m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
 		m.mode == modeDetailReschedule || m.mode == modeDetailMove || m.mode == modeDetailConfirmDelete ||
-		m.mode == modeDetailAddComment || m.mode == modeDetailViewComments) &&
+		m.mode == modeDetailAddComment || m.mode == modeDetailViewComments || m.mode == modeAddSubTask) &&
 		len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
 		return m.viewDetail()
 	}
