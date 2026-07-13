@@ -87,8 +87,8 @@ func (t *textInput) view() string {
 	return before + cursorChar + after
 }
 
-// viewWidth renders the input with a visible window of the given width,
-// scrolling horizontally to keep the cursor visible.
+// viewWidth renders the input with text wrapping at the given width,
+// showing the content across multiple lines if needed.
 func (t *textInput) viewWidth(w int) string {
 	if w <= 0 {
 		return t.view()
@@ -107,29 +107,58 @@ func (t *textInput) viewWidth(w int) string {
 		afterCursor = after[sz:]
 	}
 
-	// Calculate visible window: show as much before cursor as fits,
-	// with at least some after-cursor content visible
-	maxBefore := w - 2 // leave room for cursor + at least 1 char after
-	if maxBefore < 0 {
-		maxBefore = 0
+	// Build the full display string then wrap it
+	full := before + cursorChar + afterCursor
+	if len(t.buf) < w {
+		return full
 	}
 
-	visibleBefore := before
-	if len(visibleBefore) > maxBefore {
-		visibleBefore = "…" + visibleBefore[len(visibleBefore)-maxBefore+1:]
+	// Wrap by inserting newlines at width boundaries
+	// We work on the raw buffer to find wrap points, then rebuild with cursor
+	var lines []string
+	line := ""
+	lineLen := 0
+	for i, ch := range t.buf {
+		if lineLen >= w {
+			lines = append(lines, line)
+			line = ""
+			lineLen = 0
+		}
+		if i == t.pos {
+			// Insert cursor here
+			if after == "" {
+				line += "█"
+			} else {
+				line += "\x1b[7m" + string(ch) + "\x1b[0m"
+				lineLen++
+				continue
+			}
+		} else {
+			line += string(ch)
+		}
+		lineLen++
+	}
+	// Handle cursor at end
+	if t.pos == len(t.buf) {
+		if lineLen >= w {
+			lines = append(lines, line)
+			line = "█"
+		} else {
+			line += "█"
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
 	}
 
-	// How much space remains after before+cursor
-	remaining := w - len(visibleBefore) - 1 // -1 for cursor char
-	if remaining < 0 {
-		remaining = 0
+	result := ""
+	for i, l := range lines {
+		if i > 0 {
+			result += "\n"
+		}
+		result += l
 	}
-	visibleAfter := afterCursor
-	if len(visibleAfter) > remaining {
-		visibleAfter = visibleAfter[:remaining-1] + "…"
-	}
-
-	return visibleBefore + cursorChar + visibleAfter
+	return result
 }
 
 // handle processes a KeyMsg for text input; returns true if the key was consumed.
