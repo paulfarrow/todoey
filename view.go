@@ -82,21 +82,29 @@ func (m model) viewDetail() string {
 		} else {
 			b.WriteString(labelStyle.Render("📋 Sub-tasks") + "  " + dimStyle.Render("(j/k:select  x:complete  enter:open)") + "\n")
 			for i, st := range m.subTasks {
-				checkbox := "○"
-				stStyle := valueStyle
-				if st.Priority >= 3 {
-					stStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("215"))
+				// Priority indicator
+				priorityPrefix := ""
+				switch st.Priority {
+				case 4:
+					priorityPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("⚑ ")
+				case 3:
+					priorityPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("215")).Render("⚑ ")
+				case 2:
+					priorityPrefix = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render("⚑ ")
 				}
-				prefix := "    "
-				if i == m.subTaskCursor {
-					prefix = "  " + lipgloss.NewStyle().Foreground(lipgloss.Color("78")).Render("▸") + " "
-					stStyle = stStyle.Bold(true)
-				}
-				b.WriteString(prefix + dimStyle.Render(checkbox) + " " + stStyle.Render(st.Content))
+				// Due date
+				stDue := ""
 				if st.Due != nil && st.Due.Date != "" {
-					b.WriteString(" " + dimStyle.Render("("+st.Due.Date+")"))
+					stDue = " " + dimStyle.Render("("+st.Due.Date+")")
 				}
-				b.WriteString("\n")
+				// Render line matching main list style
+				var stLine string
+				if i == m.subTaskCursor {
+					stLine = selectedStyle.Render("   ○ "+priorityPrefix+st.Content) + stDue
+				} else {
+					stLine = normalStyle.Render("    ○ "+priorityPrefix+st.Content) + stDue
+				}
+				b.WriteString(stLine + "\n")
 			}
 		}
 	}
