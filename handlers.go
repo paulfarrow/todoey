@@ -243,6 +243,9 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			for i := m.taskCursor + 1; i < len(m.tasks); i++ {
 				if m.tasks[i].ProjectID != curPID {
 					m.taskCursor = i
+					if m.mode == modeVisual {
+						m.selected = visualRange(m.visualAnchor, m.taskCursor)
+					}
 					m.ensureTaskVisible()
 					break
 				}
@@ -267,6 +270,9 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.taskCursor = dest
 			} else {
 				m.taskCursor = 0
+			}
+			if m.mode == modeVisual {
+				m.selected = visualRange(m.visualAnchor, m.taskCursor)
 			}
 			m.ensureTaskVisible()
 		}
