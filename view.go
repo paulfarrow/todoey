@@ -369,7 +369,11 @@ func (m model) View() string {
 		if c := m.addTaskCompletion(); c != "" {
 			idx := strings.LastIndex(m.input.val(), "#")
 			fragment := m.input.val()[idx+1:]
-			ghost = dimStyle.Render(c[len(fragment):])
+			// Unescape for length comparison against project name
+			unescaped := strings.ReplaceAll(fragment, "\\ ", " ")
+			if len(unescaped) < len(c) {
+				ghost = dimStyle.Render(c[len(unescaped):])
+			}
 		}
 		main.WriteString(promptBox.Render(titleStyle.Render("New task: ") + m.input.viewWidth(inputWidth-10) + ghost) + "\n")
 	} else if m.mode == modeAddDesc {

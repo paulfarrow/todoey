@@ -17,7 +17,9 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mode == modeAdd {
 			if c := m.addTaskCompletion(); c != "" {
 				idx := strings.LastIndex(m.input.val(), "#")
-				m.input.set(m.input.val()[:idx+1] + c)
+				// Escape spaces for Todoist quick-add parser
+				escaped := strings.ReplaceAll(c, " ", "\\ ")
+				m.input.set(m.input.val()[:idx+1] + escaped)
 			}
 		}
 	case "enter":

@@ -269,12 +269,15 @@ func (m model) addTaskCompletion() string {
 	if idx < 0 {
 		return ""
 	}
-	fragment := strings.ToLower(m.input.val()[idx+1:])
+	fragment := m.input.val()[idx+1:]
 	if fragment == "" {
 		return ""
 	}
+	// Unescape backslash-spaces for matching against project names
+	unescaped := strings.ReplaceAll(fragment, "\\ ", " ")
+	lower := strings.ToLower(unescaped)
 	for _, p := range m.projects {
-		if strings.HasPrefix(strings.ToLower(p.Name), fragment) {
+		if strings.HasPrefix(strings.ToLower(p.Name), lower) {
 			return p.Name
 		}
 	}
