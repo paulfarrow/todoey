@@ -95,10 +95,10 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, createTask(content)
 		case modeAddSubTask:
-			if text != "" && len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
-				parentID := m.tasks[m.taskCursor].ID
+			if text != "" {
+				parent := m.currentDetailTask()
 				m.mode = modeDetail
-				return m, createSubTask(text, parentID)
+				return m, createSubTask(text, parent.ID)
 			}
 			m.mode = modeDetail
 		}
@@ -368,7 +368,7 @@ func (m model) handleNormal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	t := m.tasks[m.taskCursor]
+	t := m.currentDetailTask()
 
 	if m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
 		m.mode == modeDetailReschedule || m.mode == modeDetailMove ||
@@ -446,9 +446,20 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc", "q":
-		m.mode = modeNormal
-		m.subTasks = nil
-		m.subTaskCursor = 0
+		if m.detailTask != nil {
+			// Viewing a sub-task: go back to parent task detail
+			m.detailTask = nil
+			m.subTasks = nil
+			m.subTaskCursor = 0
+			// Re-fetch sub-tasks of the parent (tasks[taskCursor])
+			if m.taskCursor < len(m.tasks) {
+				return m, fetchSubTasks(m.tasks[m.taskCursor].ID)
+			}
+		} else {
+			m.mode = modeNormal
+			m.subTasks = nil
+			m.subTaskCursor = 0
+		}
 	case "e":
 		m.mode = modeDetailEditContent
 		m.detailField.set(t.Content)
@@ -501,21 +512,13 @@ func (m model) handleDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.subTaskCursor--
 		}
 	case "enter":
-		// Open the selected sub-task as the detail view
+		// Open the selected sub-task in its own detail view
 		if len(m.subTasks) > 0 && m.subTaskCursor < len(m.subTasks) {
-			// Find the sub-task in the main task list or switch to it
 			st := m.subTasks[m.subTaskCursor]
-			for i, tk := range m.tasks {
-				if tk.ID == st.ID {
-					m.taskCursor = i
-					m.subTasks = nil
-					m.subTaskCursor = 0
-					return m, fetchSubTasks(st.ID)
-				}
-			}
-			// Sub-task not in current list - open in browser as fallback
-			openTaskInBrowser(st.ID)
-			m.status = "Opened sub-task in browser"
+			m.detailTask = &st
+			m.subTasks = nil
+			m.subTaskCursor = 0
+			return m, fetchSubTasks(st.ID)
 		}
 	}
 	return m, nil

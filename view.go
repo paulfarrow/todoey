@@ -9,7 +9,7 @@ import (
 )
 
 func (m model) viewDetail() string {
-	t := m.tasks[m.taskCursor]
+	t := m.currentDetailTask()
 
 	w := m.width
 	if w == 0 {
@@ -166,7 +166,7 @@ func (m model) View() string {
 	if (m.mode == modeDetail || m.mode == modeDetailEditContent || m.mode == modeDetailEditDesc ||
 		m.mode == modeDetailReschedule || m.mode == modeDetailMove || m.mode == modeDetailConfirmDelete ||
 		m.mode == modeDetailAddComment || m.mode == modeDetailViewComments || m.mode == modeAddSubTask) &&
-		len(m.tasks) > 0 && m.taskCursor < len(m.tasks) {
+		(m.detailTask != nil || (len(m.tasks) > 0 && m.taskCursor < len(m.tasks))) {
 		return m.viewDetail()
 	}
 	sidebarWidth := 24

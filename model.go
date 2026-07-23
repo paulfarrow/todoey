@@ -42,6 +42,7 @@ type model struct {
 	comments      []comment
 	subTasks      []task // sub-tasks of the currently viewed task in detail mode
 	subTaskCursor int    // selected sub-task index in detail view
+	detailTask    *task  // task currently shown in detail view (nil = use tasks[taskCursor])
 	projectCursor int
 	taskCursor    int
 	selected      map[int]bool
@@ -197,6 +198,14 @@ func visualRange(anchor, cursor int) map[int]bool {
 		out[i] = true
 	}
 	return out
+}
+
+// currentDetailTask returns the task being shown in the detail view.
+func (m model) currentDetailTask() task {
+	if m.detailTask != nil {
+		return *m.detailTask
+	}
+	return m.tasks[m.taskCursor]
 }
 
 func (m model) selectedTasks() []task {
