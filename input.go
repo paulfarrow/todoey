@@ -1,6 +1,10 @@
 package main
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 // textInput is a cursor-aware single-line input field.
 type textInput struct {
@@ -93,72 +97,62 @@ func (t *textInput) viewWidth(w int) string {
 	if w <= 0 {
 		return t.view()
 	}
-	before := t.buf[:t.pos]
-	after := t.buf[t.pos:]
 
-	var cursorChar string
-	var afterCursor string
-	if after == "" {
-		cursorChar = "█"
-		afterCursor = ""
-	} else {
-		_, sz := firstRune(after)
-		cursorChar = "\x1b[7m" + after[:sz] + "\x1b[0m"
-		afterCursor = after[sz:]
-	}
-
-	// Build the full display string then wrap it
-	full := before + cursorChar + afterCursor
+	// If the buffer fits in one line, just use the simple view
 	if len(t.buf) < w {
-		return full
+		return t.view()
 	}
 
-	// Wrap by inserting newlines at width boundaries
-	// We work on the raw buffer to find wrap points, then rebuild with cursor
+	// Wrap the buffer into lines of at most w characters,
+	// then inject the cursor at the correct position.
 	var lines []string
-	line := ""
-	lineLen := 0
-	for i, ch := range t.buf {
-		if lineLen >= w {
-			lines = append(lines, line)
-			line = ""
-			lineLen = 0
-		}
-		if i == t.pos {
-			// Insert cursor here
-			if after == "" {
-				line += "█"
-			} else {
-				line += "\x1b[7m" + string(ch) + "\x1b[0m"
-				lineLen++
-				continue
-			}
-		} else {
-			line += string(ch)
-		}
-		lineLen++
+	buf := t.buf
+	for len(buf) > w {
+		lines = append(lines, buf[:w])
+		buf = buf[w:]
 	}
-	// Handle cursor at end
-	if t.pos == len(t.buf) {
-		if lineLen >= w {
-			lines = append(lines, line)
-			line = "█"
-		} else {
-			line += "█"
-		}
+	lines = append(lines, buf)
+
+	// Find which line and offset the cursor is on
+	cursorLine := 0
+	cursorCol := t.pos
+	for cursorCol > w {
+		cursorCol -= w
+		cursorLine++
 	}
-	if line != "" {
-		lines = append(lines, line)
+	if cursorCol == w && cursorLine < len(lines)-1 {
+		cursorCol = 0
+		cursorLine++
 	}
 
-	result := ""
+	// Rebuild lines with cursor injected
+	var result strings.Builder
 	for i, l := range lines {
 		if i > 0 {
-			result += "\n"
+			result.WriteString("\n")
 		}
-		result += l
+		if i == cursorLine {
+			before := l[:cursorCol]
+			after := l[cursorCol:]
+			result.WriteString(before)
+			if after == "" {
+				result.WriteString("█")
+			} else {
+				_, sz := firstRune(after)
+				result.WriteString("\x1b[7m" + after[:sz] + "\x1b[0m")
+				result.WriteString(after[sz:])
+			}
+		} else {
+			result.WriteString(l)
+		}
 	}
-	return result
+
+	// If cursor is at the very end and on a new line
+	if t.pos == len(t.buf) && t.pos > 0 && t.pos%w == 0 {
+		result.WriteString("\n█")
+	}
+
+	return result.String()
 }
 
 // handle processes a KeyMsg for text input; returns true if the key was consumed.
