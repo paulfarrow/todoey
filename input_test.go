@@ -259,6 +259,30 @@ func TestTextInput_HandleCharInput(t *testing.T) {
 	}
 }
 
+func TestTextInput_HandleMultiByteRune(t *testing.T) {
+	var ti textInput
+	ti.set("")
+	// £ is a 2-byte UTF-8 character
+	consumed := ti.handle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'£'}})
+	if !consumed {
+		t.Fatal("£ should be consumed")
+	}
+	if ti.val() != "£" {
+		t.Fatalf("expected '£', got %q", ti.val())
+	}
+	// Add more and verify
+	ti.handle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'5'}})
+	ti.handle(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'€'}})
+	if ti.val() != "£5€" {
+		t.Fatalf("expected '£5€', got %q", ti.val())
+	}
+	// Backspace should remove the € cleanly (3-byte char)
+	ti.backspace()
+	if ti.val() != "£5" {
+		t.Fatalf("expected '£5' after backspace, got %q", ti.val())
+	}
+}
+
 func TestTextInput_HandleSpace(t *testing.T) {
 	var ti textInput
 	ti.set("ab")

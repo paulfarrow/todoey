@@ -184,10 +184,11 @@ func (t *textInput) handle(msg tea.KeyMsg) bool {
 		t.deleteForward()
 	default:
 		ch := msg.String()
-		if ch == " " || (len(ch) == 1 && ch[0] >= 0x20) {
-			t.insert(ch)
-		} else if len(msg.Runes) > 1 && msg.Type == tea.KeyRunes {
+		if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+			// Accept printable rune input (including multi-byte UTF-8 like £, €, emoji)
 			t.insert(string(msg.Runes))
+		} else if ch == " " || (len(ch) == 1 && ch[0] >= 0x20) {
+			t.insert(ch)
 		} else {
 			return false
 		}
