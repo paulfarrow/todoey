@@ -90,6 +90,8 @@ func (m model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case modeAddDesc:
 			content := m.detailField.val()
 			m.detailField.clear()
+			// Apply the current project as default if none specified
+			content = m.applyDefaultProject(content)
 			if text != "" {
 				content += " // " + text
 			}

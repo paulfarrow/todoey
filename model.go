@@ -293,6 +293,42 @@ func (m model) addTaskCompletion() string {
 	return ""
 }
 
+// applyDefaultProject appends the currently viewed project as a #tag to the
+// task content when viewing a project and the content has no project tag.
+func (m model) applyDefaultProject(content string) string {
+	// Only apply on a project view (not Today, not search)
+	if m.projectCursor == 0 || m.searchQuery != "" {
+		return content
+	}
+	if m.projectCursor-1 >= len(m.projects) {
+		return content
+	}
+	// If the content already specifies a project, leave it unchanged.
+	// A '#' not preceded by a backslash indicates a project tag for quick-add.
+	if containsProjectTag(content) {
+		return content
+	}
+	projectName := m.projects[m.projectCursor-1].Name
+	// Escape spaces for the quick-add parser
+	escaped := strings.ReplaceAll(projectName, " ", "\\ ")
+	return content + " #" + escaped
+}
+
+// containsProjectTag reports whether the quick-add content already contains a
+// project tag (an unescaped '#').
+func containsProjectTag(content string) bool {
+	for i := 0; i < len(content); i++ {
+		if content[i] == '#' {
+			// Not a project tag if the '#' is escaped with a backslash
+			if i > 0 && content[i-1] == '\\' {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // availableHeight returns the number of lines available for content (excluding footer).
 func (m model) availableHeight() int {
 	if m.height == 0 {

@@ -221,6 +221,72 @@ func TestAddTaskCompletion(t *testing.T) {
 	}
 }
 
+func TestContainsProjectTag(t *testing.T) {
+	cases := []struct {
+		content string
+		want    bool
+	}{
+		{"Buy milk", false},
+		{"Buy milk #Work", true},
+		{"Buy milk #Work\\ Stuff", true},
+		{"Pay 5 \\# code", false}, // escaped hash is not a tag
+		{"", false},
+		{"#Project at start", true},
+	}
+	for _, c := range cases {
+		if got := containsProjectTag(c.content); got != c.want {
+			t.Errorf("containsProjectTag(%q) = %v, want %v", c.content, got, c.want)
+		}
+	}
+}
+
+func TestApplyDefaultProject_OnProjectView(t *testing.T) {
+	m := testModel()
+	m.projectCursor = 1 // "Work" project
+	result := m.applyDefaultProject("Buy milk")
+	if result != "Buy milk #Work" {
+		t.Fatalf("expected 'Buy milk #Work', got %q", result)
+	}
+}
+
+func TestApplyDefaultProject_AlreadyHasTag(t *testing.T) {
+	m := testModel()
+	m.projectCursor = 1 // "Work" project
+	result := m.applyDefaultProject("Buy milk #Personal")
+	if result != "Buy milk #Personal" {
+		t.Fatalf("expected unchanged, got %q", result)
+	}
+}
+
+func TestApplyDefaultProject_OnTodayView(t *testing.T) {
+	m := testModel()
+	m.projectCursor = 0 // Today view
+	result := m.applyDefaultProject("Buy milk")
+	if result != "Buy milk" {
+		t.Fatalf("expected unchanged on Today view, got %q", result)
+	}
+}
+
+func TestApplyDefaultProject_DuringSearch(t *testing.T) {
+	m := testModel()
+	m.projectCursor = 1
+	m.searchQuery = "something"
+	result := m.applyDefaultProject("Buy milk")
+	if result != "Buy milk" {
+		t.Fatalf("expected unchanged during search, got %q", result)
+	}
+}
+
+func TestApplyDefaultProject_EscapesSpaces(t *testing.T) {
+	m := testModel()
+	m.projects = []project{{ID: "p1", Name: "My Big Project"}}
+	m.projectCursor = 1
+	result := m.applyDefaultProject("Buy milk")
+	if result != "Buy milk #My\\ Big\\ Project" {
+		t.Fatalf("expected escaped project name, got %q", result)
+	}
+}
+
 func TestUpdate_WindowSize(t *testing.T) {
 	m := testModel()
 	result, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
